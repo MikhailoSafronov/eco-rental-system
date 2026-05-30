@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: eco_rental_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: super_password
+      POSTGRES_DB: eco_rental
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db-scripts:/docker-entrypoint-initdb.d 
+
+volumes:
+  pg_data:
