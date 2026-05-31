@@ -18,7 +18,7 @@ func main() {
 	defer dbPool.Close()
 
 	// 2. Ініціалізуємо наш роутер і передаємо туди пул бази даних (він нам знадобиться пізніше)
-	router := server.SetupRouter(dbPool)
+	router := server.RegisterRoutes(dbPool)
 
 	// 3. Запускаємо веб-сервер на порту 8080
 	log.Println("🌐 Веб-сервер запущено на порту :8080")

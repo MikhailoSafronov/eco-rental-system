@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"eco-rental/internal/auth"
 	"eco-rental/internal/database"
 	"eco-rental/internal/models"
 
@@ -62,11 +63,19 @@ func LoginUser(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// Генеруємо JWT токен
+		tokenString, err := auth.GenerateToken(user.ID)
+		if err != nil {
+			http.Error(w, "Помилка генерації токена", http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": "Успішний вхід",
 			"user_id": user.ID,
+			"token":   tokenString, // Віддаємо токен клієнту
 		})
 	}
 }
