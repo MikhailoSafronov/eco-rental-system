@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -24,4 +25,28 @@ func GenerateToken(userID int) (string, error) {
 
 	// Підписуємо токен нашим секретним ключем і перетворюємо у рядок
 	return token.SignedString(jwtSecretKey)
+}
+
+// ValidateToken перевіряє токен і повертає user_id
+func ValidateToken(tokenString string) (int, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Перевіряємо, чи алгоритм шифрування той самий
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("неочікуваний метод підпису")
+		}
+		return jwtSecretKey, nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	// Дістаємо дані, якщо токен валідний
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		// У JWT числа зберігаються як float64, тому робимо конвертацію
+		userID := int(claims["user_id"].(float64))
+		return userID, nil
+	}
+
+	return 0, errors.New("невалідний токен")
 }
