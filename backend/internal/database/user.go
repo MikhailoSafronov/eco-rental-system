@@ -49,3 +49,31 @@ func GetUserByEmail(pool *pgxpool.Pool, email string) (*models.User, error) {
 
 	return user, nil
 }
+
+// GetUserByID шукає користувача за його унікальним ідентифікатором
+func GetUserByID(pool *pgxpool.Pool, id int) (*models.User, error) {
+	query := `
+		SELECT id, name, email, phone, role, balance, is_blocked
+		FROM users
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	user := &models.User{}
+
+	// Зверни увагу: ми не витягуємо password_hash, бо для профілю він не потрібен
+	err := pool.QueryRow(context.Background(), query, id).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.Phone,
+		&user.Role,
+		&user.Balance,
+		&user.IsBlocked,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}

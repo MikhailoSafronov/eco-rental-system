@@ -1,11 +1,10 @@
 package server
 
 import (
-	"fmt"
 	"net/http"
 
 	"eco-rental/internal/handlers"
-	"eco-rental/internal/middleware" // Додаємо імпорт нашого охоронця
+	"eco-rental/internal/middleware"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,14 +26,8 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		// Чіпляємо нашого "охоронця" на цю групу
 		r.Use(middleware.Auth)
 
-		// Тестовий захищений маршрут
-		r.Get("/api/users/me", func(w http.ResponseWriter, r *http.Request) {
-			// Дістаємо ID користувача, який охоронець поклав у контекст
-			userID := r.Context().Value(middleware.UserIDKey)
-
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(fmt.Sprintf(`{"message": "Ти успішно пройшов охоронця!", "твоє_id": %v}`, userID)))
-		})
+		// Реальний маршрут отримання профілю
+		r.Get("/api/users/me", handlers.GetProfile(dbPool))
 	})
 
 	return r
