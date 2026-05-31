@@ -2,22 +2,27 @@ package main
 
 import (
 	"log"
+	"net/http" // Вбудований пакет Go для роботи з HTTP
 
 	"eco-rental/internal/database"
+	"eco-rental/internal/server"
 )
 
 func main() {
-	// DSN (Data Source Name)
-	// Формат: postgres://користувач:пароль@хост:порт/назва_бд
+	// 1. Підключаємось до бази даних PostgreSQL
 	dsn := "postgres://admin:super_password@localhost:5433/eco_rental"
-
-	// Викликаємо функцію підключення
 	dbPool, err := database.Connect(dsn)
 	if err != nil {
-		log.Fatalf("❌ Критична помилка: %v\n", err)
+		log.Fatalf("❌ Критична помилка БД: %v\n", err)
 	}
-	// Гарантуємо закриття з'єднання при вимкненні програми
 	defer dbPool.Close()
 
-	log.Println("🚀 Сервер еко-оренди готовий до роботи!")
+	// 2. Ініціалізуємо наш роутер і передаємо туди пул бази даних (він нам знадобиться пізніше)
+	router := server.SetupRouter(dbPool)
+
+	// 3. Запускаємо веб-сервер на порту 8080
+	log.Println("🌐 Веб-сервер запущено на порту :8080")
+	if err := http.ListenAndServe(":8080", router); err != nil {
+		log.Fatalf("❌ Помилка запуску сервера: %v", err)
+	}
 }
