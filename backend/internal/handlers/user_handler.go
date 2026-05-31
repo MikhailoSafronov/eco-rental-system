@@ -6,6 +6,7 @@ import (
 
 	"eco-rental/internal/auth"
 	"eco-rental/internal/database"
+	"eco-rental/internal/middleware"
 	"eco-rental/internal/models"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,5 +78,32 @@ func LoginUser(pool *pgxpool.Pool) http.HandlerFunc {
 			"user_id": user.ID,
 			"token":   tokenString, // Віддаємо токен клієнту
 		})
+	}
+}
+
+// GetProfile повертає дані профілю поточного авторизованого користувача
+func GetProfile(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 1. Дістаємо ID користувача з контексту запиту
+		userIDRaw := r.Context().Value(middleware.UserIDKey)
+
+		// Перевіряємо, чи дійсно це число (int)
+		userID, ok := userIDRaw.(int)
+		if !ok {
+			http.Error(w, "Помилка авторизації: неможливо прочитати ID", http.StatusUnauthorized)
+			return
+		}
+
+		// 2. Йдемо в базу даних за повною інформацією
+		user, err := database.GetUserByID(pool, userID)
+		if err != nil {
+			http.Error(w, "Користувача не знайдено", http.StatusNotFound)
+			return
+		}
+
+		// 3. Віддаємо дані клієнту у форматі JSON
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(user)
 	}
 }
