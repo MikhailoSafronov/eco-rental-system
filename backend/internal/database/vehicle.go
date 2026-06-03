@@ -67,7 +67,6 @@ func GetVehicleByID(pool *pgxpool.Pool, id int) (*models.Vehicle, error) {
 
 	var v models.Vehicle
 
-	// Використовуємо QueryRow, бо шукаємо лише один запис
 	err := pool.QueryRow(context.Background(), query, id).Scan(
 		&v.ID,
 		&v.UUID,
@@ -78,8 +77,33 @@ func GetVehicleByID(pool *pgxpool.Pool, id int) (*models.Vehicle, error) {
 	)
 
 	if err != nil {
-		return nil, err // Повертаємо помилку (наприклад, якщо самокат не знайдено)
+		return nil, err
 	}
 
 	return &v, nil
+}
+
+// UpdateVehicleTelemetry оновлює координати та заряд батареї самоката за його UUID
+func UpdateVehicleTelemetry(pool *pgxpool.Pool, uuid string, lat float64, lon float64, battery int) error {
+	query := `
+		UPDATE vehicles 
+		SET 
+			location = ST_SetSRID(ST_MakePoint($1, $2), 4326),
+			battery_level = $3,
+			updated_at = NOW()
+		WHERE uuid = $4 AND deleted_at IS NULL
+	`
+
+	// ST_MakePoint приймає спочатку довготу (longitude), потім широту (latitude)
+	commandTag, err := pool.Exec(context.Background(), query, lon, lat, battery, uuid)
+	if err != nil {
+		return fmt.Errorf("помилка оновлення телеметрії: %w", err)
+	}
+
+	// Перевіряємо, чи дійсно оновився хоча б один рядок (чи існує такий UUID)
+	if commandTag.RowsAffected() == 0 {
+		return fmt.Errorf("самокат з UUID %s не знайдено", uuid)
+	}
+
+	return nil
 }
