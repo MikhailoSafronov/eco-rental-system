@@ -9,3 +9,10 @@ type Vehicle struct {
 	Latitude     float64 `json:"latitude"`
 	Longitude    float64 `json:"longitude"`
 }
+
+// TelemetryRequest представляє дані, які надсилає фізичний самокат
+type TelemetryRequest struct {
+	Latitude     float64 `json:"latitude"`
+	Longitude    float64 `json:"longitude"`
+	BatteryLevel int     `json:"battery_level"`
+}
