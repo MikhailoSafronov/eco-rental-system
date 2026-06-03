@@ -1,7 +1,12 @@
--- 1. Подключение расширения PostGIS для работы с геоданными
+-- ==========================================
+-- 1. НАЛАШТУВАННЯ ТА РОЗШИРЕННЯ
+-- ==========================================
+-- Підключення розширення PostGIS для роботи з геоданними
 CREATE EXTENSION IF NOT EXISTS postgis;
 
--- 2. Створення перелічуваних типів (ENUM)
+-- ==========================================
+-- 2. СТВОРЕННЯ ПЕРЕЛІЧУВАНИХ ТИПІВ (ENUM)
+-- ==========================================
 CREATE TYPE user_role AS ENUM ('client', 'mechanic', 'admin');
 CREATE TYPE vehicle_type AS ENUM ('scooter', 'bike');
 CREATE TYPE vehicle_status AS ENUM ('available', 'rented', 'low_battery', 'broken', 'maintenance');
@@ -9,14 +14,17 @@ CREATE TYPE ride_status AS ENUM ('active', 'completed', 'cancelled');
 CREATE TYPE payment_type AS ENUM ('charge', 'top_up');
 CREATE TYPE payment_status AS ENUM ('pending', 'succeeded', 'failed');
 
--- 3. Створення таблиць
+-- ==========================================
+-- 3. СТВОРЕННЯ ТАБЛИЦЬ
+-- ==========================================
 
 -- Довідник користувачів
 CREATE TABLE users (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    email VARCHAR(150) NOT NULL,
-    phone VARCHAR(20) NOT NULL,
+    email VARCHAR(150) NOT NULL UNIQUE, -- Додано UNIQUE для надійності на рівні таблиці
+    phone VARCHAR(20) NOT NULL UNIQUE,  -- Додано UNIQUE для надійності на рівні таблиці
+    password_hash VARCHAR(255) NOT NULL,
     role user_role NOT NULL DEFAULT 'client',
     balance NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
     is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
@@ -113,22 +121,49 @@ CREATE TABLE maintenance_logs (
     finished_at TIMESTAMPTZ
 );
 
--- 4. Створення індексів
+-- ==========================================
+-- 4. СТВОРЕННЯ ІНДЕКСІВ
+-- ==========================================
 
--- Часткові унікальні індекси
-CREATE UNIQUE INDEX idx_users_email_unique ON users(email) WHERE deleted_at IS NULL;
-CREATE UNIQUE INDEX idx_users_phone_unique ON users(phone) WHERE deleted_at IS NULL;
+-- Часткові унікальні індекси (для м'якого видалення)
+CREATE UNIQUE INDEX idx_users_email_unique_active ON users(email) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_users_phone_unique_active ON users(phone) WHERE deleted_at IS NULL;
 
 -- Захист від Race Condition
 CREATE UNIQUE INDEX idx_one_active_ride_per_user ON rides(user_id) WHERE status = 'active';
 CREATE UNIQUE INDEX idx_one_active_ride_per_vehicle ON rides(vehicle_id) WHERE status = 'active';
 
--- Просторові індекси (GiST)
+-- Просторові індекси (GiST) для швидкого пошуку по карті
 CREATE INDEX idx_parking_zones_polygon ON parking_zones USING gist(polygon);
 CREATE INDEX idx_vehicles_location ON vehicles USING gist(location);
 CREATE INDEX idx_ride_telemetry_location ON ride_telemetry USING gist(location);
 
--- B-Tree індекси
+-- B-Tree індекси для частих вибірок
 CREATE INDEX idx_vehicles_status ON vehicles(status);
 CREATE INDEX idx_ride_telemetry_ride_id ON ride_telemetry(ride_id);
 CREATE INDEX idx_payments_user_id ON payments(user_id);
+
+-- ==========================================
+-- 5. ТЕСТОВІ ДАНІ (SEED DATA)
+-- ==========================================
+
+-- Додаємо базові тарифи
+INSERT INTO tariffs (name, unlock_price, minute_price) VALUES
+('Базовий (Будні)', 9.00, 3.00),
+('Вихідний день', 15.00, 4.00);
+
+-- Додаємо моделі самокатів
+INSERT INTO vehicle_models (name, type, battery_capacity_wh, max_speed) VALUES
+('Ninebot Max G30', 'scooter', 551, 25),
+('Xiaomi Mi Pro 2', 'scooter', 474, 25);
+
+-- Додаємо тестові самокати на вулиці
+INSERT INTO vehicles (model_id, tariff_id, location, battery_level, status) VALUES
+-- Самокат 1: Готовий до оренди (Майдан Незалежності)
+(1, 1, ST_SetSRID(ST_MakePoint(30.523400, 50.450100), 4326), 98, 'available'),
+
+-- Самокат 2: Готовий до оренди, але розряджається (Золоті Ворота)
+(1, 1, ST_SetSRID(ST_MakePoint(30.518000, 50.448000), 4326), 45, 'available'),
+
+-- Самокат 3: На ремонті (м. Хрещатик)
+(2, 2, ST_SetSRID(ST_MakePoint(30.522000, 50.447000), 4326), 12, 'maintenance');
