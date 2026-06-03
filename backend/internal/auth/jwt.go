@@ -2,14 +2,20 @@ package auth
 
 import (
 	"errors"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Секретний ключ для підпису токенів.
-// У реальному проекті він МАЄ зберігатися у змінних середовища (.env), а не в коді.
-var jwtSecretKey = []byte("super_secret_key_for_eco_rental")
+// getSecretKey динамічно дістає ключ зі змінних середовища
+func getSecretKey() []byte {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		panic("Критична помилка: JWT_SECRET не встановлено")
+	}
+	return []byte(secret)
+}
 
 // GenerateToken створює JWT токен для користувача
 func GenerateToken(userID int) (string, error) {
@@ -24,7 +30,7 @@ func GenerateToken(userID int) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	// Підписуємо токен нашим секретним ключем і перетворюємо у рядок
-	return token.SignedString(jwtSecretKey)
+	return token.SignedString(getSecretKey())
 }
 
 // ValidateToken перевіряє токен і повертає user_id
@@ -34,7 +40,7 @@ func ValidateToken(tokenString string) (int, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("неочікуваний метод підпису")
 		}
-		return jwtSecretKey, nil
+		return getSecretKey(), nil
 	})
 
 	if err != nil {

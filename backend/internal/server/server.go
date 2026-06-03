@@ -21,6 +21,10 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 	r.Post("/api/users/register", handlers.RegisterUser(dbPool))
 	r.Post("/api/users/login", handlers.LoginUser(dbPool))
 
+	// Маршрути для транспорту
+	r.Get("/api/vehicles", handlers.GetAvailableVehicles(dbPool))
+	r.Get("/api/vehicles/{id}", handlers.GetVehicle(dbPool)) // НОВИЙ МАРШРУТ ДЛЯ ОДНОГО САМОКАТА
+
 	// 2. Захищені маршрути (тільки з токеном)
 	r.Group(func(r chi.Router) {
 		// Чіпляємо нашого "охоронця" на цю групу
