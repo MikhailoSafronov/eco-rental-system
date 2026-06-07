@@ -36,8 +36,9 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		r.Get("/api/users/me", handlers.GetProfile(dbPool))
 		r.Post("/api/users/topup", handlers.TopUpBalance(dbPool))
 
-		// Поїздки (НОВИЙ МАРШРУТ)
+		// Поїздки
 		r.Post("/api/rides/start", handlers.StartRide(dbPool))
+		r.Post("/api/rides/end", handlers.EndRide(dbPool)) // <-- ДОДАНИЙ РЯДОК ЗАВЕРШЕННЯ ПОЇЗДКИ
 	})
 
 	return r

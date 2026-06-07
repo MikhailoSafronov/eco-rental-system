@@ -46,3 +46,32 @@ func StartRide(pool *pgxpool.Pool) http.HandlerFunc {
 		})
 	}
 }
+
+// EndRide обробляє запит на завершення поїздки
+func EndRide(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 1. Витягуємо ID користувача з токена так само, як і під час старту
+		userIDRaw := r.Context().Value(middleware.UserIDKey)
+		userID, ok := userIDRaw.(int)
+		if !ok {
+			http.Error(w, "Помилка авторизації: неможливо прочитати ID", http.StatusUnauthorized)
+			return
+		}
+
+		// 2. Відразу викликаємо базу даних (жодних JSON із тіла не декодуємо, бо нам потрібен лише userID)
+		ride, err := database.EndRide(pool, userID)
+		if err != nil {
+			// Якщо поїздки немає або сталась помилка при розрахунках
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// 3. Повертаємо успішну відповідь із фінальним чеком
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Поїздку завершено! Дякуємо, що обрали нас 💚",
+			"receipt": ride, // Повертаємо чек із сумою та часом
+		})
+	}
+}
