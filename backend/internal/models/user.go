@@ -25,3 +25,8 @@ type User struct {
 	Balance      float64 `json:"balance"`
 	IsBlocked    bool    `json:"is_blocked"`
 }
+
+// TopUpRequest описує дані для поповнення балансу (НОВЕ)
+type TopUpRequest struct {
+	Amount float64 `json:"amount"`
+}

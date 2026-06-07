@@ -25,13 +25,16 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 	r.Get("/api/vehicles", handlers.GetAvailableVehicles(dbPool))
 	r.Get("/api/vehicles/{id}", handlers.GetVehicle(dbPool))
 
-	// НОВИЙ МАРШРУТ: IoT ендпоінт для заліза (Прихований)
+	// IoT ендпоінт для заліза (Прихований)
 	r.Patch("/api/iot/vehicles/{uuid}/telemetry", handlers.UpdateTelemetry(dbPool))
 
 	// 2. Захищені маршрути (тільки з токеном)
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth)
 		r.Get("/api/users/me", handlers.GetProfile(dbPool))
+
+		// НОВИЙ МАРШРУТ: Поповнення балансу
+		r.Post("/api/users/topup", handlers.TopUpBalance(dbPool))
 	})
 
 	return r
