@@ -107,3 +107,42 @@ func GetProfile(pool *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(user)
 	}
 }
+
+// TopUpBalance обробляє запит на поповнення віртуального рахунку (НОВЕ)
+func TopUpBalance(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Витягуємо ID користувача з контексту так само, як у GetProfile
+		userIDRaw := r.Context().Value(middleware.UserIDKey)
+
+		userID, ok := userIDRaw.(int)
+		if !ok {
+			http.Error(w, "Помилка авторизації: неможливо прочитати ID", http.StatusUnauthorized)
+			return
+		}
+
+		// Декодуємо JSON із сумою
+		var req models.TopUpRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Некоректний формат даних", http.StatusBadRequest)
+			return
+		}
+
+		// Перевіряємо, щоб сума була адекватною
+		if req.Amount <= 0 {
+			http.Error(w, "Сума поповнення має бути більшою за нуль", http.StatusBadRequest)
+			return
+		}
+
+		// Оновлюємо баланс у базі даних
+		err := database.AddUserBalance(dbPool, userID, req.Amount)
+		if err != nil {
+			http.Error(w, "Не вдалося поповнити баланс", http.StatusInternalServerError)
+			return
+		}
+
+		// Відповідаємо успіхом
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success", "message":"Баланс успішно поповнено"}`))
+	}
+}

@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"eco-rental/internal/models"
+	"fmt" // Додано для форматування тексту помилок
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -76,4 +77,24 @@ func GetUserByID(pool *pgxpool.Pool, id int) (*models.User, error) {
 	}
 
 	return user, nil
+}
+
+// AddUserBalance додає вказану суму до існуючого балансу користувача (НОВЕ)
+func AddUserBalance(pool *pgxpool.Pool, userID int, amount float64) error {
+	query := `
+		UPDATE users 
+		SET balance = balance + $1 
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+
+	commandTag, err := pool.Exec(context.Background(), query, amount, userID)
+	if err != nil {
+		return fmt.Errorf("помилка поповнення балансу: %w", err)
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		return fmt.Errorf("користувача з ID %d не знайдено", userID)
+	}
+
+	return nil
 }
