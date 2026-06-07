@@ -31,10 +31,13 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 	// 2. Захищені маршрути (тільки з токеном)
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth)
-		r.Get("/api/users/me", handlers.GetProfile(dbPool))
 
-		// НОВИЙ МАРШРУТ: Поповнення балансу
+		// Користувач та фінанси
+		r.Get("/api/users/me", handlers.GetProfile(dbPool))
 		r.Post("/api/users/topup", handlers.TopUpBalance(dbPool))
+
+		// Поїздки (НОВИЙ МАРШРУТ)
+		r.Post("/api/rides/start", handlers.StartRide(dbPool))
 	})
 
 	return r
