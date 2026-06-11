@@ -85,25 +85,52 @@ func GetVehicleByID(pool *pgxpool.Pool, id int) (*models.Vehicle, error) {
 
 // UpdateVehicleTelemetry оновлює координати та заряд батареї самоката за його UUID
 func UpdateVehicleTelemetry(pool *pgxpool.Pool, uuid string, lat float64, lon float64, battery int) error {
-	query := `
+	ctx := context.Background()
+
+	// Відкриваємо транзакцію, оскільки тепер у нас два пов'язаних запити
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("помилка старту транзакції: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Оновлюємо сам самокат і одразу дістаємо його ID та поточний статус (RETURNING)
+	updateVehicleQuery := `
 		UPDATE vehicles 
 		SET 
 			location = ST_SetSRID(ST_MakePoint($1, $2), 4326),
 			battery_level = $3,
 			updated_at = NOW()
 		WHERE uuid = $4 AND deleted_at IS NULL
+		RETURNING id, status
 	`
 
-	// ST_MakePoint приймає спочатку довготу (longitude), потім широту (latitude)
-	commandTag, err := pool.Exec(context.Background(), query, lon, lat, battery, uuid)
+	var vehicleID int
+	var status string
+
+	err = tx.QueryRow(ctx, updateVehicleQuery, lon, lat, battery, uuid).Scan(&vehicleID, &status)
 	if err != nil {
+		// Якщо QueryRow повертає помилку, що рядків не знайдено
+		if err.Error() == "no rows in result set" {
+			return fmt.Errorf("самокат з UUID %s не знайдено", uuid)
+		}
 		return fmt.Errorf("помилка оновлення телеметрії: %w", err)
 	}
 
-	// Перевіряємо, чи дійсно оновився хоча б один рядок (чи існує такий UUID)
-	if commandTag.RowsAffected() == 0 {
-		return fmt.Errorf("самокат з UUID %s не знайдено", uuid)
+	// 2. Якщо самокат зараз в оренді, записуємо точку маршруту
+	if status == "rented" {
+		insertTelemetryQuery := `
+			INSERT INTO ride_telemetry (ride_id, location)
+			SELECT id, ST_SetSRID(ST_MakePoint($1, $2), 4326)
+			FROM rides
+			WHERE vehicle_id = $3 AND status = 'active'
+		`
+		_, err = tx.Exec(ctx, insertTelemetryQuery, lon, lat, vehicleID)
+		if err != nil {
+			return fmt.Errorf("помилка збереження треку поїздки: %w", err)
+		}
 	}
 
-	return nil
+	// 3. Фіксуємо зміни
+	return tx.Commit(ctx)
 }

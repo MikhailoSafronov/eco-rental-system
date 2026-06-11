@@ -39,6 +39,7 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		// Поїздки
 		r.Post("/api/rides/start", handlers.StartRide(dbPool))
 		r.Post("/api/rides/end", handlers.EndRide(dbPool)) // <-- ДОДАНИЙ РЯДОК ЗАВЕРШЕННЯ ПОЇЗДКИ
+		r.Get("/api/rides/history", handlers.GetRideHistory(dbPool))
 	})
 
 	return r

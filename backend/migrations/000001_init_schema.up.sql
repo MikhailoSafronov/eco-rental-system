@@ -159,11 +159,11 @@ INSERT INTO vehicle_models (name, type, battery_capacity_wh, max_speed) VALUES
 
 -- Додаємо тестові самокати на вулиці
 INSERT INTO vehicles (model_id, tariff_id, location, battery_level, status) VALUES
--- Самокат 1: Готовий до оренди (Майдан Незалежності)
-(1, 1, ST_SetSRID(ST_MakePoint(30.523400, 50.450100), 4326), 98, 'available'),
+-- Самокат 1: Готовий до оренди (Площа Свободи, Херсон)
+(1, 1, ST_SetSRID(ST_MakePoint(32.614600, 46.632200), 4326), 98, 'available'),
 
--- Самокат 2: Готовий до оренди, але розряджається (Золоті Ворота)
-(1, 1, ST_SetSRID(ST_MakePoint(30.518000, 50.448000), 4326), 45, 'available'),
+-- Самокат 2: Готовий до оренди, але розряджається (Проспект Незалежності)
+(1, 1, ST_SetSRID(ST_MakePoint(32.616200, 46.634500), 4326), 45, 'available'),
 
--- Самокат 3: На ремонті (м. Хрещатик)
-(2, 2, ST_SetSRID(ST_MakePoint(30.522000, 50.447000), 4326), 12, 'maintenance');
+-- Самокат 3: На ремонті (ТРЦ Суворовський)
+(2, 2, ST_SetSRID(ST_MakePoint(32.611100, 46.631500), 4326), 12, 'maintenance');

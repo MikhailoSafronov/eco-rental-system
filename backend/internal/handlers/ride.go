@@ -58,8 +58,21 @@ func EndRide(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		// 2. Відразу викликаємо базу даних (жодних JSON із тіла не декодуємо, бо нам потрібен лише userID)
-		ride, err := database.EndRide(pool, userID)
+		// 2. Читаємо JSON з URL фотографії паркування (ОБОВ'ЯЗКОВО)
+		var req struct {
+			EndPhotoURL string `json:"end_photo_url"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Помилка читання JSON: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if req.EndPhotoURL == "" {
+			http.Error(w, "Для завершення поїздки обов'язково потрібно додати фотографію паркування (поле end_photo_url)", http.StatusBadRequest)
+			return
+		}
+
+		// 3. Викликаємо базу даних і передаємо URL фото
+		ride, err := database.EndRide(pool, userID, req.EndPhotoURL)
 		if err != nil {
 			// Якщо поїздки немає або сталась помилка при розрахунках
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -72,6 +85,30 @@ func EndRide(pool *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": "Поїздку завершено! Дякуємо, що обрали нас 💚",
 			"receipt": ride, // Повертаємо чек із сумою та часом
+		})
+	}
+}
+
+// GetRideHistory повертає історію поїздок поточного користувача
+func GetRideHistory(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userIDRaw := r.Context().Value(middleware.UserIDKey)
+		userID, ok := userIDRaw.(int)
+		if !ok {
+			http.Error(w, "Помилка авторизації: неможливо прочитати ID", http.StatusUnauthorized)
+			return
+		}
+
+		history, err := database.GetUserRideHistory(pool, userID)
+		if err != nil {
+			http.Error(w, "Помилка отримання історії поїздок", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"rides": history,
 		})
 	}
 }
