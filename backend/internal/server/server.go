@@ -24,6 +24,7 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 	// Маршрути для транспорту (Клієнтські)
 	r.Get("/api/vehicles", handlers.GetAvailableVehicles(dbPool))
 	r.Get("/api/vehicles/{id}", handlers.GetVehicle(dbPool))
+	r.Get("/api/zones", handlers.GetParkingZones(dbPool))
 
 	// IoT ендпоінт для заліза (Прихований)
 	r.Patch("/api/iot/vehicles/{uuid}/telemetry", handlers.UpdateTelemetry(dbPool))
