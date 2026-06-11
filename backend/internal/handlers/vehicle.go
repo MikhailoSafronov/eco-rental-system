@@ -17,7 +17,7 @@ func GetAvailableVehicles(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vehicles, err := database.GetAllAvailableVehicles(dbPool)
 		if err != nil {
-			http.Error(w, "Помилка отримання даних з БД", http.StatusInternalServerError)
+			RespondWithError(w, http.StatusInternalServerError, "Помилка отримання даних з БД")
 			return
 		}
 
@@ -33,13 +33,13 @@ func GetVehicle(dbPool *pgxpool.Pool) http.HandlerFunc {
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
-			http.Error(w, "Некоректний ID самоката", http.StatusBadRequest)
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID самоката")
 			return
 		}
 
 		vehicle, err := database.GetVehicleByID(dbPool, id)
 		if err != nil {
-			http.Error(w, "Самокат не знайдено", http.StatusNotFound)
+			RespondWithError(w, http.StatusNotFound, "Самокат не знайдено")
 			return
 		}
 
@@ -55,27 +55,27 @@ func UpdateTelemetry(dbPool *pgxpool.Pool) http.HandlerFunc {
 		// Витягуємо UUID з URL
 		uuid := chi.URLParam(r, "uuid")
 		if uuid == "" {
-			http.Error(w, "UUID обов'язковий", http.StatusBadRequest)
+			RespondWithError(w, http.StatusBadRequest, "UUID обов'язковий")
 			return
 		}
 
 		// Декодуємо JSON від самоката
 		var req models.TelemetryRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Некоректний формат даних", http.StatusBadRequest)
+			RespondWithError(w, http.StatusBadRequest, "Некоректний формат даних")
 			return
 		}
 
 		// Базова валідація батареї
 		if req.BatteryLevel < 0 || req.BatteryLevel > 100 {
-			http.Error(w, "Некоректний рівень заряду", http.StatusBadRequest)
+			RespondWithError(w, http.StatusBadRequest, "Некоректний рівень заряду")
 			return
 		}
 
 		// Оновлюємо базу даних
 		err := database.UpdateVehicleTelemetry(dbPool, uuid, req.Latitude, req.Longitude, req.BatteryLevel)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			RespondWithError(w, http.StatusNotFound, err.Error())
 			return
 		}
 

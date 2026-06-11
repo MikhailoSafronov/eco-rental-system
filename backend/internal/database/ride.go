@@ -214,6 +214,10 @@ func GetUserRideHistory(pool *pgxpool.Pool, userID int) ([]map[string]interface{
 		})
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("помилка читання рядків: %w", err)
+	}
+
 	if history == nil {
 		history = []map[string]interface{}{} // Повертаємо пустий масив, якщо поїздок ще немає
 	}

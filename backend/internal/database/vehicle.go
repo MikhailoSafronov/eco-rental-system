@@ -48,6 +48,10 @@ func GetAllAvailableVehicles(pool *pgxpool.Pool) ([]models.Vehicle, error) {
 		vehicles = append(vehicles, v)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("помилка читання рядків транспорту: %w", err)
+	}
+
 	return vehicles, nil
 }
 
