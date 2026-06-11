@@ -8,6 +8,7 @@ import (
 	"eco-rental/internal/database"
 	"eco-rental/internal/server"
 
+	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
 )
 
@@ -49,9 +50,21 @@ func main() {
 	// 4. Ініціалізуємо наш роутер і передаємо туди пул бази даних
 	router := server.RegisterRoutes(dbPool)
 
+	// Налаштовуємо CORS middleware
+	corsMiddleware := cors.New(cors.Options{
+		// Дозволяємо запити з типових портів React (3000) та Vite (5173)
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300, // Кешуємо CORS-відповіді в браузері на 5 хвилин
+	})
+	handler := corsMiddleware.Handler(router)
+
 	// 5. Запускаємо веб-сервер на порту 8080
 	log.Println("🌐 Веб-сервер запущено на порту :8080")
-	if err := http.ListenAndServe(":8080", router); err != nil {
+	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatalf("❌ Помилка запуску сервера: %v", err)
 	}
 }
