@@ -49,5 +49,15 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		r.Post("/api/upload", handlers.UploadPhoto())
 	})
 
+	// 3. Адміністративні маршрути
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.Auth)                 // Спочатку перевіряємо наявність токена
+		r.Use(middleware.RequireAdmin(dbPool)) // Потім перевіряємо роль адміністратора
+
+		r.Get("/api/admin/vehicles", handlers.GetAllVehiclesAdmin(dbPool))
+		r.Post("/api/admin/vehicles", handlers.AddVehicle(dbPool))
+		r.Patch("/api/admin/vehicles/{id}/status", handlers.UpdateVehicleStatus(dbPool))
+	})
+
 	return r
 }
