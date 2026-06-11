@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -27,6 +28,13 @@ func UploadPhoto() http.HandlerFunc {
 			return
 		}
 		defer file.Close()
+
+		// 2.2 Сувора перевірка розширення файлу в назві
+		ext := strings.ToLower(filepath.Ext(handler.Filename))
+		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+			RespondWithError(w, http.StatusBadRequest, "Недопустиме розширення файлу. Дозволені лише: .jpg, .jpeg, .png, .webp")
+			return
+		}
 
 		// 2.5 Перевіряємо реальний тип файлу (MIME type)
 		buff := make([]byte, 512)

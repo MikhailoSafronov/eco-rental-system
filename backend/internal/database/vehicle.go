@@ -29,7 +29,8 @@ func GetAllAvailableVehicles(pool *pgxpool.Pool) ([]models.Vehicle, error) {
 	}
 	defer rows.Close()
 
-	var vehicles []models.Vehicle
+	// Ініціалізуємо пустим масивом, щоб JSON ніколи не повертав null
+	vehicles := make([]models.Vehicle, 0)
 
 	for rows.Next() {
 		var v models.Vehicle

@@ -54,7 +54,8 @@ func GetAllVehiclesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 	}
 	defer rows.Close()
 
-	var vehicles []map[string]interface{}
+	// Ініціалізуємо пустим масивом, щоб уникнути помилок на фронтенді
+	vehicles := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		var id, battery int
 		var uuid, status string

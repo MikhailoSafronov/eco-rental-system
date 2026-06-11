@@ -30,6 +30,16 @@ func StartRide(pool *pgxpool.Pool, userID int, vehicleID int) (*models.Ride, err
 		return nil, fmt.Errorf("недостатньо коштів на балансі (мінімум 50.00 грн)")
 	}
 
+	// ПЕРЕВІРКА: Чи є у користувача вже активна поїздка?
+	var activeRides int
+	err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM rides WHERE user_id = $1 AND status = 'active'", userID).Scan(&activeRides)
+	if err != nil {
+		return nil, fmt.Errorf("помилка перевірки активних поїздок: %w", err)
+	}
+	if activeRides > 0 {
+		return nil, fmt.Errorf("у вас вже є активна поїздка. Одночасно можна орендувати лише один самокат")
+	}
+
 	var status string
 	err = tx.QueryRow(ctx, "SELECT status FROM vehicles WHERE id = $1 FOR UPDATE", vehicleID).Scan(&status)
 	if err != nil {
