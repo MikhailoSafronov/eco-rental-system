@@ -63,7 +63,7 @@ func UploadPhoto() http.HandlerFunc {
 		}
 
 		// 4. Генеруємо унікальне ім'я файлу, щоб не перезаписати існуючі (наприклад: 167890123_image.jpg)
-		fileName := fmt.Sprintf("%d_%s", time.Now().Unix(), filepath.Base(handler.Filename))
+		fileName := fmt.Sprintf("%d_%s", time.Now().UnixNano(), filepath.Base(handler.Filename))
 		filePath := filepath.Join(uploadDir, fileName)
 
 		// 5. Створюємо порожній файл на диску
