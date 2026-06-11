@@ -28,6 +28,10 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 	// IoT ендпоінт для заліза (Прихований)
 	r.Patch("/api/iot/vehicles/{uuid}/telemetry", handlers.UpdateTelemetry(dbPool))
 
+	// Роздача статичних файлів з папки uploads (фотографії паркування)
+	fs := http.FileServer(http.Dir("uploads"))
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", fs))
+
 	// 2. Захищені маршрути (тільки з токеном)
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth)
@@ -40,6 +44,9 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		r.Post("/api/rides/start", handlers.StartRide(dbPool))
 		r.Post("/api/rides/end", handlers.EndRide(dbPool)) // <-- ДОДАНИЙ РЯДОК ЗАВЕРШЕННЯ ПОЇЗДКИ
 		r.Get("/api/rides/history", handlers.GetRideHistory(dbPool))
+
+		// Завантаження файлів
+		r.Post("/api/upload", handlers.UploadPhoto())
 	})
 
 	return r
