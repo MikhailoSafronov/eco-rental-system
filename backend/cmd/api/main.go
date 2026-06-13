@@ -8,6 +8,7 @@ import (
 	"eco-rental/internal/database"
 	"eco-rental/internal/server"
 
+	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
 )
 
@@ -20,12 +21,23 @@ func main() {
 
 	// 2. Читаємо секрети та перевіряємо їх наявність
 	dsn := os.Getenv("DB_DSN")
+	// Якщо змінна DB_DSN не встановлена (немає .env файлу), використовуємо стандартну для нашого docker-compose
 	if dsn == "" {
-		log.Fatal("❌ Критична помилка: змінна DB_DSN не встановлена")
+		log.Println("💡 Змінна DB_DSN не знайдена. Використовується стандартне значення для Docker.")
+		dsn = "postgres://admin:super_password@localhost:5433/eco_rental?sslmode=disable"
 	}
 
-	if os.Getenv("JWT_SECRET") == "" {
-		log.Fatal("❌ Критична помилка: змінна JWT_SECRET не встановлена")
+	// Робимо те саме для JWT_SECRET
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Println("💡 Змінна JWT_SECRET не знайдена. Встановлюється стандартне значення.")
+		// Встановлюємо змінну середовища для поточної сесії, щоб інші пакети (auth) могли її прочитати
+		os.Setenv("JWT_SECRET", "super_secret_eco_rental_key_2026!")
+	}
+
+	// 2.5 Запускаємо міграції до того, як відкриємо пул з'єднань для веб-сервера
+	if err := database.RunMigrations(dsn); err != nil {
+		log.Fatalf("❌ Критична помилка під час виконання міграцій: %v", err)
 	}
 
 	// 3. Підключаємось до бази даних PostgreSQL, використовуючи рядок з .env
@@ -38,9 +50,21 @@ func main() {
 	// 4. Ініціалізуємо наш роутер і передаємо туди пул бази даних
 	router := server.RegisterRoutes(dbPool)
 
+	// Налаштовуємо CORS middleware
+	corsMiddleware := cors.New(cors.Options{
+		// Дозволяємо запити з типових портів React (3000) та Vite (5173)
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300, // Кешуємо CORS-відповіді в браузері на 5 хвилин
+	})
+	handler := corsMiddleware.Handler(router)
+
 	// 5. Запускаємо веб-сервер на порту 8080
 	log.Println("🌐 Веб-сервер запущено на порту :8080")
-	if err := http.ListenAndServe(":8080", router); err != nil {
+	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatalf("❌ Помилка запуску сервера: %v", err)
 	}
 }

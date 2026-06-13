@@ -24,9 +24,14 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 	// Маршрути для транспорту (Клієнтські)
 	r.Get("/api/vehicles", handlers.GetAvailableVehicles(dbPool))
 	r.Get("/api/vehicles/{id}", handlers.GetVehicle(dbPool))
+	r.Get("/api/zones", handlers.GetParkingZones(dbPool))
 
 	// IoT ендпоінт для заліза (Прихований)
 	r.Patch("/api/iot/vehicles/{uuid}/telemetry", handlers.UpdateTelemetry(dbPool))
+
+	// Роздача статичних файлів з папки uploads (фотографії паркування)
+	fs := http.FileServer(http.Dir("uploads"))
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", fs))
 
 	// 2. Захищені маршрути (тільки з токеном)
 	r.Group(func(r chi.Router) {
@@ -39,6 +44,20 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		// Поїздки
 		r.Post("/api/rides/start", handlers.StartRide(dbPool))
 		r.Post("/api/rides/end", handlers.EndRide(dbPool)) // <-- ДОДАНИЙ РЯДОК ЗАВЕРШЕННЯ ПОЇЗДКИ
+		r.Get("/api/rides/history", handlers.GetRideHistory(dbPool))
+
+		// Завантаження файлів
+		r.Post("/api/upload", handlers.UploadPhoto())
+	})
+
+	// 3. Адміністративні маршрути
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.Auth)                 // Спочатку перевіряємо наявність токена
+		r.Use(middleware.RequireAdmin(dbPool)) // Потім перевіряємо роль адміністратора
+
+		r.Get("/api/admin/vehicles", handlers.GetAllVehiclesAdmin(dbPool))
+		r.Post("/api/admin/vehicles", handlers.AddVehicle(dbPool))
+		r.Patch("/api/admin/vehicles/{id}/status", handlers.UpdateVehicleStatus(dbPool))
 	})
 
 	return r
