@@ -4,4 +4,4 @@
 -- 1. Створюємо тестового користувача
 -- Пароль зашифровано через bcrypt. Реальний пароль для входу: password123
 INSERT INTO users (name, email, phone, password_hash, role, balance) VALUES
-('Демо Користувач', 'demo@example.com', '+380991234567', '$2a$10$E97L/a6bQ0H1hs0GJndsi.coaXi2NV1EYeTpzP7FesjZzRtny513C', 'client', 500.00);
+('Демо Користувач', 'demo@example.com', '+380991234567', '$2a$10$5GWM0md73Y1cxH8L1K095epnSGewA7SSN2PeRNv7BFbn6SsULtdDG', 'client', 500.00);

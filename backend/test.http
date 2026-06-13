@@ -8,7 +8,7 @@
 
 # @token - сюди треба вставити токен після виконання запиту "3. Логін". 
 # Без лапок! Просто довгий рядок: eyJhbGciOiJIUzI1...
-@token = YOUR_TOKEN_HERE
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODE0NDE2MDIsImlhdCI6MTc4MTM1NTIwMiwidXNlcl9pZCI6Mn0.2i-Pv2Ghn_kGaD7BnW0GqyxBBOG6XEUQFPlVzWm2H5s
 
 
 ### 1. Перевірка, чи живий сервер
@@ -26,9 +26,9 @@ POST {{baseUrl}}/users/register
 Content-Type: application/json
 
 {
-    "name": "Тест Тестович",
-    "email": "test@example.com",
-    "phone": "+380501234567",
+    "name": "Новий Тестер",
+    "email": "my_new_tester@example.com",
+    "phone": "+380505556677",
     "password": "superpassword"
 }
 
@@ -45,8 +45,21 @@ POST {{baseUrl}}/users/login
 Content-Type: application/json
 
 {
-    "email": "test@example.com",
+    "email": "my_new_tester@example.com",
     "password": "superpassword"
+}
+
+
+### 3.1 Логін (Швидкий вхід під Демо-користувачем)
+# Що робить: Дозволяє пропустити крок 2 (Реєстрація) та крок 4 (Поповнення).
+# Цей користувач (з міграції №3) вже має 500 грн на балансі для тестів оренди.
+# ⚠️ ДІЯ: Скопіюйте токен з відповіді та вставте у @token.
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+    "email": "demo@example.com",
+    "password": "password123"
 }
 
 
@@ -94,13 +107,13 @@ GET {{baseUrl}}/zones
 # Що робить: Імітує автоматичний запит ВІД самого самоката (оновлення його координат/заряду).
 # ⚠️ ДІЯ: Замініть "your-vehicle-uuid-here" в URL на реальний "uuid" з кроку 5 
 # (наприклад: 550e8400-e29b-41d4-a716-446655440000).
-PATCH {{baseUrl}}/iot/vehicles/your-vehicle-uuid-here/telemetry
+PATCH {{baseUrl}}/iot/vehicles/aa858d46-1d83-4ba4-967c-e92ae595e479/telemetry
 Content-Type: application/json
 
 {
-    "latitude": 50.4501,
-    "longitude": 30.5234,
-    "battery_level": 85
+    "latitude": 46.63540,
+    "longitude": 32.61690,
+    "battery_level": 75
 }
 
 
@@ -139,7 +152,7 @@ Content-Type: image/jpeg
 # ⚠️ ДІЯ: Замініть частину шляху після /uploads/ на те, що ви отримали на кроці 7.
 # Увага: тут ми не використовуємо {{baseUrl}}, оскільки статика лежить не в /api, а в корені.
 # Очікуваний результат: 200 OK і фотографію (у VS Code вона прямо відмалюється на екрані).
-GET http://localhost:8080/uploads/1700000000_test.jpg
+GET http://localhost:8080/uploads/1781338758366382600_test.jpg
 
 
 ### 8. Завершення поїздки
@@ -151,7 +164,7 @@ Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
-    "end_photo_url": "/uploads/1700000000_test.jpg"
+    "end_photo_url": "/uploads/1781338758366382600_test.jpg"
 }
 
 
@@ -167,6 +180,21 @@ Authorization: Bearer {{token}}
 ### ПОВИНЕН мати "role": "admin" у базі даних (спрацює middleware RequireAdmin).
 ### ========================================
 
+### 9.5 Логін під Адміністратором (Отримання адмін-токена)
+# Що робить: Авторизує тестового адміністратора, якого було автоматично створено у міграціях.
+# ⚠️ ДІЯ (ЩОБ ПРОТЕСТУВАТИ ПУНКТИ 10-12): 
+# 1. Натисніть "Send Request" над цим запитом.
+# 2. Знайдіть у відповіді поле "token" та скопіюйте його довге значення (БЕЗ лапок).
+# 3. Підніміться на самий початок цього файлу і вставте скопійований текст у змінну @token.
+# Після цього пункти 10, 11 та 12 працюватимуть успішно!
+POST {{baseUrl}}/users/login
+Content-Type: application/json
+
+{
+    "email": "admin@example.com",
+    "password": "password123"
+}
+
 ### 10. Отримати всі самокати (включаючи видалені/зламані)
 # Що робить: Показує адміністратору весь автопарк.
 GET {{baseUrl}}/admin/vehicles
@@ -181,6 +209,7 @@ Authorization: Bearer {{token}}
 
 {
     "uuid": "new-scooter-uuid-1234",
+    "model_id": 1,
     "battery_level": 100,
     "latitude": 50.4501,
     "longitude": 30.5234,
