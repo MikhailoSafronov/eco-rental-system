@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 
 export const Layout = () => {
@@ -15,10 +15,15 @@ export const Layout = () => {
     <div className="flex flex-col min-h-screen">
       {/* Це спільний хедер, який буде видно на всіх захищених сторінках */}
       <header className="flex items-center justify-between p-4 bg-green-600 text-white font-bold shadow-md">
-        <span>Eco Rental - Оренда міського транспорту 🛴🚲🛵</span>
+        <Link to="/" className="hover:text-green-200 transition">
+          Eco Rental - Оренда міського транспорту 🛴🚲🛵
+        </Link>
         <div className="flex items-center gap-4">
           {/* Показуємо email або ім'я користувача, якщо вони є */}
           {user && <span className="text-sm font-normal">Привіт, {user.email}!</span>}
+          <Link to="/profile" className="rounded bg-green-500 px-3 py-1 text-sm font-medium transition hover:bg-green-400">
+            Мій профіль
+          </Link>
           <button onClick={handleLogout} className="rounded bg-green-700 px-3 py-1 text-sm transition hover:bg-green-800">
             Вийти
           </button>

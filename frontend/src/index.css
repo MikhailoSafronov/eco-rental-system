@@ -1,8 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 body {
   margin: 0;
-  background-color: #f3f4f6; /* Світло-сірий фон сторінок за замовчуванням */
+  background-color: #f3f4f6;
 }
