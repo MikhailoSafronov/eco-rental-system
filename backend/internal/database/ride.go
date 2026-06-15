@@ -37,21 +37,21 @@ func StartRide(pool *pgxpool.Pool, userID int, vehicleID int) (*models.Ride, err
 		return nil, fmt.Errorf("помилка перевірки активних поїздок: %w", err)
 	}
 	if activeRides > 0 {
-		return nil, fmt.Errorf("у вас вже є активна поїздка. Одночасно можна орендувати лише один самокат")
+		return nil, fmt.Errorf("у вас вже є активна поїздка. Одночасно можна орендувати лише один транспортний засіб")
 	}
 
 	var status string
 	err = tx.QueryRow(ctx, "SELECT status FROM vehicles WHERE id = $1 FOR UPDATE", vehicleID).Scan(&status)
 	if err != nil {
-		return nil, fmt.Errorf("помилка перевірки самоката: %w", err)
+		return nil, fmt.Errorf("помилка перевірки транспорту: %w", err)
 	}
 	if status != "available" {
-		return nil, fmt.Errorf("самокат вже орендовано або він недоступний")
+		return nil, fmt.Errorf("транспорт вже орендовано або він недоступний")
 	}
 
 	_, err = tx.Exec(ctx, "UPDATE vehicles SET status = 'rented', updated_at = NOW() WHERE id = $1", vehicleID)
 	if err != nil {
-		return nil, fmt.Errorf("не вдалося оновити статус самоката: %w", err)
+		return nil, fmt.Errorf("не вдалося оновити статус транспорту: %w", err)
 	}
 
 	queryRide := `
@@ -121,7 +121,7 @@ func EndRide(pool *pgxpool.Pool, userID int, photoURL string) (*models.Ride, err
 		return nil, fmt.Errorf("помилка перевірки паркувальних зон: %w", err)
 	}
 	if !isParkedCorrectly {
-		return nil, fmt.Errorf("Завершення поїздки неможливе! Самокат знаходиться поза межами дозволеної зони паркування (Центр Херсона). Будь ласка, перепаркуйте транспорт.")
+		return nil, fmt.Errorf("Завершення поїздки неможливе! Транспорт знаходиться поза межами дозволеної зони паркування (Центр Херсона). Будь ласка, перепаркуйте транспорт.")
 	}
 
 	// 2. Рахуємо час (округлюємо до хвилин у більшу сторону, мінімум 1 хвилина)
@@ -138,10 +138,10 @@ func EndRide(pool *pgxpool.Pool, userID int, photoURL string) (*models.Ride, err
 		return nil, fmt.Errorf("помилка списання коштів: %w", err)
 	}
 
-	// 4. Повертаємо самокат на карту
+	// 4. Повертаємо транспорт на карту
 	_, err = tx.Exec(ctx, "UPDATE vehicles SET status = 'available', updated_at = NOW() WHERE id = $1", vehicleID)
 	if err != nil {
-		return nil, fmt.Errorf("не вдалося оновити статус самоката: %w", err)
+		return nil, fmt.Errorf("не вдалося оновити статус транспорту: %w", err)
 	}
 
 	// 5. Завершуємо поїздку в таблиці rides

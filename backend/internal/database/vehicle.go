@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// GetAllAvailableVehicles повертає список усіх вільних самокатів
+// GetAllAvailableVehicles повертає список усього вільного транспорту
 func GetAllAvailableVehicles(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 	query := `
 		SELECT 
@@ -18,9 +18,12 @@ func GetAllAvailableVehicles(pool *pgxpool.Pool) ([]map[string]interface{}, erro
 			ST_Y(v.location::geometry) AS latitude,
 			ST_X(v.location::geometry) AS longitude,
 			t.unlock_price,
-			t.minute_price
+			t.minute_price,
+			m.name AS model_name,
+			m.type AS vehicle_type
 		FROM vehicles v
 		JOIN tariffs t ON v.tariff_id = t.id
+		JOIN vehicle_models m ON v.model_id = m.id
 		WHERE v.status = 'available' AND v.deleted_at IS NULL
 	`
 
@@ -34,10 +37,10 @@ func GetAllAvailableVehicles(pool *pgxpool.Pool) ([]map[string]interface{}, erro
 
 	for rows.Next() {
 		var id, battery int
-		var uuid, status string
+		var uuid, status, modelName, vehicleType string
 		var lat, lon, unlockPrice, minutePrice float64
 
-		if err := rows.Scan(&id, &uuid, &battery, &status, &lat, &lon, &unlockPrice, &minutePrice); err != nil {
+		if err := rows.Scan(&id, &uuid, &battery, &status, &lat, &lon, &unlockPrice, &minutePrice, &modelName, &vehicleType); err != nil {
 			return nil, fmt.Errorf("помилка сканування рядка: %w", err)
 		}
 
@@ -48,6 +51,8 @@ func GetAllAvailableVehicles(pool *pgxpool.Pool) ([]map[string]interface{}, erro
 			"status":        status,
 			"latitude":      lat,
 			"longitude":     lon,
+			"model_name":    modelName,
+			"vehicle_type":  vehicleType,
 			"unlock_price":  unlockPrice,
 			"minute_price":  minutePrice,
 		})
@@ -71,17 +76,20 @@ func GetVehicleByID(pool *pgxpool.Pool, id int) (map[string]interface{}, error) 
 			ST_Y(v.location::geometry) AS latitude,
 			ST_X(v.location::geometry) AS longitude,
 			t.unlock_price,
-			t.minute_price
+			t.minute_price,
+			m.name AS model_name,
+			m.type AS vehicle_type
 		FROM vehicles v
 		JOIN tariffs t ON v.tariff_id = t.id
+		JOIN vehicle_models m ON v.model_id = m.id
 		WHERE v.id = $1 AND v.deleted_at IS NULL
 	`
 
 	var vID, battery int
-	var uuid, status string
+	var uuid, status, modelName, vehicleType string
 	var lat, lon, unlockPrice, minutePrice float64
 
-	err := pool.QueryRow(context.Background(), query, id).Scan(&vID, &uuid, &battery, &status, &lat, &lon, &unlockPrice, &minutePrice)
+	err := pool.QueryRow(context.Background(), query, id).Scan(&vID, &uuid, &battery, &status, &lat, &lon, &unlockPrice, &minutePrice, &modelName, &vehicleType)
 
 	if err != nil {
 		return nil, err
@@ -94,12 +102,14 @@ func GetVehicleByID(pool *pgxpool.Pool, id int) (map[string]interface{}, error) 
 		"status":        status,
 		"latitude":      lat,
 		"longitude":     lon,
+		"model_name":    modelName,
+		"vehicle_type":  vehicleType,
 		"unlock_price":  unlockPrice,
 		"minute_price":  minutePrice,
 	}, nil
 }
 
-// UpdateVehicleTelemetry оновлює координати та заряд батареї самоката за його UUID
+// UpdateVehicleTelemetry оновлює координати та заряд батареї транспорту за його UUID
 func UpdateVehicleTelemetry(pool *pgxpool.Pool, uuid string, lat float64, lon float64, battery int) error {
 	ctx := context.Background()
 
@@ -110,7 +120,7 @@ func UpdateVehicleTelemetry(pool *pgxpool.Pool, uuid string, lat float64, lon fl
 	}
 	defer tx.Rollback(ctx)
 
-	// 1. Оновлюємо сам самокат і одразу дістаємо його ID та поточний статус (RETURNING)
+	// 1. Оновлюємо сам транспорт і одразу дістаємо його ID та поточний статус (RETURNING)
 	updateVehicleQuery := `
 		UPDATE vehicles 
 		SET 
@@ -128,12 +138,12 @@ func UpdateVehicleTelemetry(pool *pgxpool.Pool, uuid string, lat float64, lon fl
 	if err != nil {
 		// Якщо QueryRow повертає помилку, що рядків не знайдено
 		if err.Error() == "no rows in result set" {
-			return fmt.Errorf("самокат з UUID %s не знайдено", uuid)
+			return fmt.Errorf("транспорт з UUID %s не знайдено", uuid)
 		}
 		return fmt.Errorf("помилка оновлення телеметрії: %w", err)
 	}
 
-	// 2. Якщо самокат зараз в оренді, записуємо точку маршруту
+	// 2. Якщо транспорт зараз в оренді, записуємо точку маршруту
 	if status == "rented" {
 		insertTelemetryQuery := `
 			INSERT INTO ride_telemetry (ride_id, location)

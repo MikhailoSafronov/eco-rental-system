@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 -- 2. СТВОРЕННЯ ПЕРЕЛІЧУВАНИХ ТИПІВ (ENUM)
 -- ==========================================
 CREATE TYPE user_role AS ENUM ('client', 'mechanic', 'admin');
-CREATE TYPE vehicle_type AS ENUM ('scooter', 'bike');
+CREATE TYPE vehicle_type AS ENUM ('scooter', 'bike', 'moped');
 CREATE TYPE vehicle_status AS ENUM ('available', 'rented', 'low_battery', 'broken', 'maintenance');
 CREATE TYPE ride_status AS ENUM ('active', 'completed', 'cancelled');
 CREATE TYPE payment_type AS ENUM ('charge', 'top_up');
@@ -155,7 +155,9 @@ INSERT INTO tariffs (name, unlock_price, minute_price) VALUES
 -- Додаємо моделі самокатів
 INSERT INTO vehicle_models (name, type, battery_capacity_wh, max_speed) VALUES
 ('Ninebot Max G30', 'scooter', 551, 25),
-('Xiaomi Mi Pro 2', 'scooter', 474, 25);
+('Xiaomi Mi Pro 2', 'scooter', 474, 25),
+('E-Bike City Pro', 'bike', 500, 25),
+('NIU NQi Sport', 'moped', 1440, 45);
 
 -- Додаємо тестові самокати на вулиці
 INSERT INTO vehicles (model_id, tariff_id, location, battery_level, status) VALUES
@@ -166,4 +168,10 @@ INSERT INTO vehicles (model_id, tariff_id, location, battery_level, status) VALU
 (1, 1, ST_SetSRID(ST_MakePoint(32.616200, 46.634500), 4326), 45, 'available'),
 
 -- Самокат 3: На ремонті (ТРЦ Суворовський)
-(2, 2, ST_SetSRID(ST_MakePoint(32.611100, 46.631500), 4326), 12, 'maintenance');
+(2, 2, ST_SetSRID(ST_MakePoint(32.611100, 46.631500), 4326), 12, 'maintenance'),
+
+-- Велосипед: Готовий до оренди (Парк Слави)
+(3, 1, ST_SetSRID(ST_MakePoint(32.632000, 46.635000), 4326), 100, 'available'),
+
+-- Мопед: Готовий до оренди (Залізничний вокзал)
+(4, 2, ST_SetSRID(ST_MakePoint(32.605000, 46.645000), 4326), 100, 'available');
