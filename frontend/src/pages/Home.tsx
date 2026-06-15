@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON } from 'react-leaflet'
 import L from 'leaflet'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/axios'
@@ -15,6 +15,20 @@ interface Vehicle {
   longitude: number;
   unlock_price: number;
   minute_price: number;
+}
+
+// Інтерфейс для паркувальної зони
+interface ParkingZone {
+  id: number;
+  name: string;
+  geojson: string | object; // Дані у форматі GeoJSON
+}
+
+// Інтерфейс для історії поїздок
+interface Ride {
+  id: number;
+  status: string;
+  start_time: string;
 }
 
 // Функція для створення іконки залежно від типу транспорту
@@ -42,6 +56,22 @@ export default function Home() {
   // Координати центру Херсона (беремо з ваших тестових даних у БД)
   const centerPosition: [number, number] = [46.6322, 32.6146]
 
+  // Запит для отримання паркувальних зон
+  const { data: parkingZones } = useQuery<ParkingZone[]>({
+    queryKey: ['zones'],
+    queryFn: async () => {
+      const response = await api.get('/zones')
+      const zones = response.data?.zones || response.data || []
+      
+      // Підстраховка: PostGIS часто віддає geojson у вигляді рядка, а Leaflet вимагає об'єкт
+      return zones.map((z: ParkingZone) => ({
+        ...z,
+        geojson: typeof z.geojson === 'string' ? JSON.parse(z.geojson) : z.geojson
+      }))
+    },
+    refetchOnWindowFocus: false, // Зони змінюються дуже рідко, тому зайвий раз не оновлюємо
+  })
+
   // Запит для отримання доступного транспорту через React Query
   const { data: vehicles, isLoading, isError } = useQuery({
     queryKey: ['vehicles', 'available'],
@@ -54,11 +84,10 @@ export default function Home() {
   })
 
   // Запит історії поїздок для пошуку активної
-  const { data: historyData } = useQuery({
+  const { data: historyData } = useQuery<Ride[]>({
     queryKey: ['rides', 'history'],
     queryFn: async () => {
       const response = await api.get('/rides/history')
-      console.log('Відповідь від сервера (історія):', response.data)
       
       // Підстраховка: якщо бекенд загортає масив у об'єкт (наприклад, { rides: [...] })
       const data = response.data?.rides || response.data || []
@@ -68,9 +97,7 @@ export default function Home() {
   })
 
   // Шукаємо, чи є серед поїздок активна
-  const activeRide = Array.isArray(historyData) 
-    ? historyData.find((r) => (r as { status?: string; start_time?: string })?.status === 'active') 
-    : null
+  const activeRide = historyData?.find((r) => r.status === 'active') || null
 
   // Мутація для початку оренди
   const startRideMutation = useMutation({
@@ -88,7 +115,7 @@ export default function Home() {
       // ТАКОЖ миттєво оновлюємо історію, щоб з'явилася картка "Активна поїздка"
       queryClient.invalidateQueries({ queryKey: ['rides', 'history'] })
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       // Безпечно витягуємо повідомлення про помилку від нашого Go бекенду
       const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Невідома помилка при спробі оренди'
       alert(`Не вдалося почати оренду:\n${message}`)
@@ -109,7 +136,7 @@ export default function Home() {
       queryClient.invalidateQueries({ queryKey: ['rides', 'history'] })
       queryClient.invalidateQueries({ queryKey: ['vehicles', 'available'] })
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Невідома помилка'
       alert(`Не вдалося завершити оренду:\n${message}`)
     }
@@ -148,12 +175,12 @@ export default function Home() {
       
       {/* Індикатори стану */}
       {isLoading && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] rounded-md bg-white px-4 py-2 shadow-md font-medium text-green-700">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 rounded-md bg-white px-4 py-2 shadow-md font-medium text-green-700">
           Шукаємо транспорт поруч... 🛴🚲🛵
         </div>
       )}
       {isError && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] rounded-md bg-red-100 px-4 py-2 font-medium text-red-600 shadow-md">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 rounded-md bg-red-100 px-4 py-2 font-medium text-red-600 shadow-md">
           Помилка завантаження мапи транспорту
         </div>
       )}
@@ -167,6 +194,23 @@ export default function Home() {
           attribution='&copy; OpenStreetMap'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+
+        {/* Відмальовуємо зелені паркувальні зони */}
+        {parkingZones?.map((zone) => (
+          <GeoJSON
+            key={`zone-${zone.id}`}
+            data={zone.geojson}
+            style={{
+              color: '#22c55e', // Зелений колір межі (Tailwind green-500)
+              weight: 2,        // Товщина лінії
+              opacity: 0.8,     // Прозорість лінії
+              fillColor: '#22c55e', // Колір заливки
+              fillOpacity: 0.2, // Прозорість заливки
+            }}
+          >
+            <Popup>{zone.name}</Popup>
+          </GeoJSON>
+        ))}
 
         {/* Динамічно відмальовуємо маркери з отриманих даних */}
         {vehicles?.map((vehicle) => (
@@ -211,7 +255,7 @@ export default function Home() {
 
       {/* Банер активної поїздки (Floating Card) */}
       {activeRide && (
-        <div className="absolute bottom-8 right-8 z-[9999] w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border-t-[6px] border-green-500 flex flex-col gap-5">
+        <div className="absolute bottom-8 right-8 z-50 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border-t-[6px] border-green-500 flex flex-col gap-5">
           <div className="text-center border-b border-gray-200 pb-4">
             <h2 className="text-3xl font-extrabold text-gray-800">🛴 Активна поїздка</h2>
             <p className="mt-2 text-base font-medium text-gray-500">
