@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// GetAvailableVehicles повертає клієнту список вільних самокатів
+// GetAvailableVehicles повертає клієнту список вільного транспорту
 func GetAvailableVehicles(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vehicles, err := database.GetAllAvailableVehicles(dbPool)
@@ -27,19 +27,19 @@ func GetAvailableVehicles(dbPool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GetVehicle повертає інформацію про конкретний самокат за його ID
+// GetVehicle повертає інформацію про конкретний транспортний засіб за його ID
 func GetVehicle(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
-			RespondWithError(w, http.StatusBadRequest, "Некоректний ID самоката")
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID транспорту")
 			return
 		}
 
 		vehicle, err := database.GetVehicleByID(dbPool, id)
 		if err != nil {
-			RespondWithError(w, http.StatusNotFound, "Самокат не знайдено")
+			RespondWithError(w, http.StatusNotFound, "Транспорт не знайдено")
 			return
 		}
 
@@ -49,7 +49,7 @@ func GetVehicle(dbPool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// UpdateTelemetry приймає дані від фізичного самоката (IoT)
+// UpdateTelemetry приймає дані від фізичного транспорту (IoT)
 func UpdateTelemetry(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Витягуємо UUID з URL
@@ -59,7 +59,7 @@ func UpdateTelemetry(dbPool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		// Декодуємо JSON від самоката
+		// Декодуємо JSON від транспорту
 		var req models.TelemetryRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			RespondWithError(w, http.StatusBadRequest, "Некоректний формат даних")
@@ -79,7 +79,7 @@ func UpdateTelemetry(dbPool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		// Відповідаємо самокату, що все успішно (200 OK)
+		// Відповідаємо транспорту, що все успішно (200 OK)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"success","message":"telemetry updated"}`))
