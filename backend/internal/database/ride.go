@@ -138,6 +138,15 @@ func EndRide(pool *pgxpool.Pool, userID int, photoURL string) (*models.Ride, err
 		return nil, fmt.Errorf("помилка списання коштів: %w", err)
 	}
 
+	// 3.5 Записуємо фінансовий лог (чек) про списання коштів за поїздку у таблицю payments
+	paymentQuery := `
+		INSERT INTO payments (ride_id, user_id, amount, type, status)
+		VALUES ($1, $2, $3, 'charge', 'succeeded')
+	`
+	if _, err := tx.Exec(ctx, paymentQuery, rideID, userID, totalPrice); err != nil {
+		return nil, fmt.Errorf("помилка збереження чеку платежу: %w", err)
+	}
+
 	// 4. Повертаємо транспорт на карту
 	_, err = tx.Exec(ctx, "UPDATE vehicles SET status = 'available', updated_at = NOW() WHERE id = $1", vehicleID)
 	if err != nil {

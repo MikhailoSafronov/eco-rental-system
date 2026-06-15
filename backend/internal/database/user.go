@@ -4,6 +4,7 @@ import (
 	"context"
 	"eco-rental/internal/models"
 	"fmt" // Додано для форматування тексту помилок
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -81,13 +82,22 @@ func GetUserByID(pool *pgxpool.Pool, id int) (*models.User, error) {
 
 // AddUserBalance додає вказану суму до існуючого балансу користувача (НОВЕ)
 func AddUserBalance(pool *pgxpool.Pool, userID int, amount float64) error {
+	ctx := context.Background()
+
+	// Відкриваємо транзакцію, оскільки маємо 2 пов'язані дії
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("помилка старту транзакції: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	query := `
 		UPDATE users 
 		SET balance = balance + $1 
 		WHERE id = $2 AND deleted_at IS NULL
 	`
 
-	commandTag, err := pool.Exec(context.Background(), query, amount, userID)
+	commandTag, err := tx.Exec(ctx, query, amount, userID)
 	if err != nil {
 		return fmt.Errorf("помилка поповнення балансу: %w", err)
 	}
@@ -96,5 +106,17 @@ func AddUserBalance(pool *pgxpool.Pool, userID int, amount float64) error {
 		return fmt.Errorf("користувача з ID %d не знайдено", userID)
 	}
 
-	return nil
+	// Генеруємо фейковий ID транзакції (наприклад: MOCK_TX_1_1718023450)
+	mockTxID := fmt.Sprintf("MOCK_TX_%d_%d", userID, time.Now().Unix())
+
+	// Записуємо факт поповнення в таблицю payments
+	paymentQuery := `
+		INSERT INTO payments (user_id, amount, type, status, external_transaction_id)
+		VALUES ($1, $2, 'top_up', 'succeeded', $3)
+	`
+	if _, err := tx.Exec(ctx, paymentQuery, userID, amount, mockTxID); err != nil {
+		return fmt.Errorf("помилка збереження історії платежу: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }

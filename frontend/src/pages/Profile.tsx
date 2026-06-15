@@ -35,6 +35,7 @@ export default function Profile() {
     onSuccess: () => {
       alert('Баланс успішно поповнено! 💸');
       queryClient.invalidateQueries({ queryKey: ['profile'] }); // Оновлюємо баланс на екрані
+      setTopUpAmount(100); // Скидаємо інпут до стандартної суми
     },
     onError: (error) => {
       const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Невідома помилка';
