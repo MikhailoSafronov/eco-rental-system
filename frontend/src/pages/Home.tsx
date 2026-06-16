@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON } from 'react-leaflet'
+import { useState, useEffect } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/axios'
@@ -33,9 +33,14 @@ interface Ride {
 
 // Функція для створення іконки залежно від типу транспорту
 const getVehicleIcon = (type: string) => {
-  let emoji = '🛴'; // За замовчуванням самокат
-  if (type === 'bike') emoji = '🚲';
-  if (type === 'moped') emoji = '🛵';
+  const emojiMap: Record<string, string> = {
+    scooter: '🛴',
+    bike: '🚲',
+    moped: '🛵',
+  };
+  
+  // Якщо тип не знайдено в словнику, ставимо знак питання
+  const emoji = emojiMap[type] || '❓';
 
   return new L.DivIcon({
     html: `<div style="font-size: 28px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.3));">${emoji}</div>`,
@@ -45,6 +50,16 @@ const getVehicleIcon = (type: string) => {
   });
 };
 
+// Допоміжний компонент для перехоплення кліків по мапі
+function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
 export default function Home() {
   // Отримуємо доступ до кешу React Query
   const queryClient = useQueryClient()
@@ -52,6 +67,17 @@ export default function Home() {
   // Стан для фотографії паркування
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+
+  // Стан для відображення координат при кліку на мапі
+  const [clickedCoords, setClickedCoords] = useState<[number, number] | null>(null)
+
+  // Автоматично приховуємо цифри координат через 2.5 секунди
+  useEffect(() => {
+    if (clickedCoords) {
+      const timer = setTimeout(() => setClickedCoords(null), 2500)
+      return () => clearTimeout(timer)
+    }
+  }, [clickedCoords])
 
   // Координати центру Херсона (беремо з ваших тестових даних у БД)
   const centerPosition: [number, number] = [46.6322, 32.6146]
@@ -194,6 +220,26 @@ export default function Home() {
           attribution='&copy; OpenStreetMap'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+
+        {/* Обробник кліків для копіювання координат */}
+        <MapClickHandler onMapClick={(lat, lng) => {
+          const coords = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          navigator.clipboard.writeText(coords); // Копіюємо у буфер обміну
+          setClickedCoords([lat, lng]); // Зберігаємо координати для показу на мапі
+        }} />
+
+        {/* Показуємо координати прямо на мапі без вікна */}
+        {clickedCoords && (
+          <Marker 
+            position={clickedCoords}
+            interactive={false} // Робимо напис "прозорим" для кліків, щоб не блокував мапу
+            icon={new L.DivIcon({
+              html: `<div class="font-mono font-bold text-green-700 text-sm whitespace-nowrap">${clickedCoords[0].toFixed(5)}, ${clickedCoords[1].toFixed(5)}</div>`,
+              className: 'bg-transparent border-none',
+              iconAnchor: [55, 10], // Приблизно центруємо напис відносно точки кліку
+            })}
+          />
+        )}
 
         {/* Відмальовуємо зелені паркувальні зони */}
         {parkingZones?.map((zone) => (

@@ -1,2 +1,3 @@
 -- Видаляємо тестову зону
-DELETE FROM parking_zones WHERE name = 'Центр (Херсон)';
+-- Видаляємо тестові зони
+DELETE FROM parking_zones WHERE name IN ('Центр (Херсон)', 'Залізничний вокзал (Херсон)');
