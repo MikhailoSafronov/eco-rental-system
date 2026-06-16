@@ -82,6 +82,10 @@ export default function Admin() {
   const [isAddTariffModalOpen, setIsAddTariffModalOpen] = useState(false);
   const [newTariffData, setNewTariffData] = useState({ name: '', vehicle_type: 'scooter', unlock_price: 15, minute_price: 3.5 });
 
+  // Стани для моделей транспорту
+  const [isAddModelModalOpen, setIsAddModelModalOpen] = useState(false);
+  const [newModelData, setNewModelData] = useState({ name: '', vehicle_type: 'scooter', battery_capacity_wh: 500, max_speed: 25 });
+
   // Отримуємо ВСІ самокати (включно зі зламаними та орендованими)
   const { data: vehicles, isLoading, isError } = useQuery<AdminVehicle[]>({
     queryKey: ['admin', 'vehicles'],
@@ -92,7 +96,7 @@ export default function Admin() {
   });
 
   // Отримуємо список всіх моделей
-  const { data: models } = useQuery<{id: number, name: string, type: string}[]>({
+  const { data: models } = useQuery<{id: number, name: string, type: string, battery_capacity_wh: number, max_speed: number}[]>({
     queryKey: ['admin', 'models'],
     queryFn: async () => {
       const res = await api.get('/admin/models');
@@ -309,6 +313,39 @@ export default function Admin() {
     }
   });
 
+  // Мутація для створення моделі
+  const addModelMutation = useMutation({
+    mutationFn: async (data: typeof newModelData) => {
+      const res = await api.post('/admin/models', data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'models'] });
+      setIsAddModelModalOpen(false);
+      setNewModelData({ name: '', vehicle_type: 'scooter', battery_capacity_wh: 500, max_speed: 25 });
+      alert('Нову модель успішно створено! ⚙️');
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка додавання моделі:\n${message}`);
+    }
+  });
+
+  // Мутація для видалення моделі
+  const deleteModelMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.delete(`/admin/models/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'models'] });
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка видалення моделі:\n${message}`);
+    }
+  });
+
   // Перевірка ролі (захист на рівні фронтенду) ПОВИННА БУТИ ПІСЛЯ ВСІХ ХУКІВ
   if (user?.role !== 'admin') {
     return <Navigate to="/" replace />;
@@ -428,6 +465,50 @@ export default function Admin() {
             {(!parkingZones || parkingZones.length === 0) && (
               <tr><td colSpan={3} className="px-6 py-4 text-center">Немає паркувальних зон</td></tr>
             )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Управління моделями ⚙️</h2>
+        <button 
+          onClick={() => setIsAddModelModalOpen(true)}
+          className="rounded-xl bg-gray-800 px-4 py-2 text-sm text-white font-bold transition hover:bg-gray-700 shadow-md"
+        >
+          + Додати модель
+        </button>
+      </div>
+      
+      <div className="overflow-hidden rounded-xl bg-white shadow-md mb-12">
+        <table className="w-full text-left text-sm text-gray-600">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-700 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Назва моделі</th>
+              <th className="px-6 py-4">Вид транспорту</th>
+              <th className="px-6 py-4">Батарея (Вт·год)</th>
+              <th className="px-6 py-4">Швидкість (км/год)</th>
+              <th className="px-6 py-4 text-right">Дії</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {models?.map((model) => (
+              <tr key={model.id} className="hover:bg-gray-50 transition">
+                <td className="px-6 py-4 font-bold text-gray-800">#{model.id}</td>
+                <td className="px-6 py-4 font-medium text-gray-800">{model.name}</td>
+                <td className="px-6 py-4">{vehicleTypeLabels[model.type] || model.type}</td>
+                <td className="px-6 py-4">{model.battery_capacity_wh}</td>
+                <td className="px-6 py-4">{model.max_speed}</td>
+                <td className="px-6 py-4 text-right">
+                  <button 
+                    onClick={() => { if (window.confirm(`Видалити модель "${model.name}"?`)) deleteModelMutation.mutate(model.id); }}
+                    className="text-red-500 hover:text-red-700 font-bold transition"
+                  >
+                    Видалити
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -824,6 +905,55 @@ export default function Admin() {
                 className="rounded-lg bg-green-600 px-4 py-2 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
               >
                 {addTariffMutation.isPending ? 'Створення...' : 'Створити'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальне вікно для створення нової моделі */}
+      {isAddModelModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold text-gray-800">Створити нову модель ⚙️</h2>
+            
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Назва моделі</label>
+                <input type="text" value={newModelData.name} onChange={e => setNewModelData({...newModelData, name: e.target.value})} placeholder="Наприклад: Ninebot Max" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-gray-800 transition" />
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Вид транспорту</label>
+                <select 
+                  value={newModelData.vehicle_type} 
+                  onChange={e => setNewModelData({...newModelData, vehicle_type: e.target.value})} 
+                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-800 transition"
+                >
+                  <option value="scooter">🛴 Самокат</option>
+                  <option value="bike">🚲 Велосипед</option>
+                  <option value="moped">🛵 Мопед</option>
+                  <option value="monowheel">🛞 Моноколесо</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Ємність батареї (Вт·год)</label>
+                <input type="number" min="0" value={newModelData.battery_capacity_wh} onChange={e => setNewModelData({...newModelData, battery_capacity_wh: parseInt(e.target.value) || 0})} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-gray-800 transition" />
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Макс. швидкість (км/год)</label>
+                <input type="number" min="0" value={newModelData.max_speed} onChange={e => setNewModelData({...newModelData, max_speed: parseInt(e.target.value) || 0})} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-gray-800 transition" />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button onClick={() => setIsAddModelModalOpen(false)} className="rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300">
+                Скасувати
+              </button>
+              <button onClick={() => addModelMutation.mutate(newModelData)} disabled={addModelMutation.isPending || !newModelData.name.trim()} className="rounded-lg bg-gray-800 px-4 py-2 font-medium text-white transition hover:bg-gray-700 disabled:opacity-50">
+                {addModelMutation.isPending ? 'Створення...' : 'Створити'}
               </button>
             </div>
           </div>

@@ -143,7 +143,7 @@ func GetAllVehiclesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 
 // GetAllModelsAdmin повертає всі моделі транспорту з бази (для випадаючого списку в адмінці)
 func GetAllModelsAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
-	query := `SELECT id, name, type FROM vehicle_models WHERE deleted_at IS NULL ORDER BY id ASC`
+	query := `SELECT id, name, type, battery_capacity_wh, max_speed FROM vehicle_models WHERE deleted_at IS NULL ORDER BY type, id ASC`
 	rows, err := pool.Query(context.Background(), query)
 	if err != nil {
 		return nil, fmt.Errorf("помилка запиту моделей: %w", err)
@@ -152,15 +152,17 @@ func GetAllModelsAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 
 	models := make([]map[string]interface{}, 0)
 	for rows.Next() {
-		var id int
+		var id, battery, speed int
 		var name, vType string
-		if err := rows.Scan(&id, &name, &vType); err != nil {
+		if err := rows.Scan(&id, &name, &vType, &battery, &speed); err != nil {
 			return nil, err
 		}
 		models = append(models, map[string]interface{}{
-			"id":   id,
-			"name": name,
-			"type": vType,
+			"id":                  id,
+			"name":                name,
+			"type":                vType,
+			"battery_capacity_wh": battery,
+			"max_speed":           speed,
 		})
 	}
 	return models, nil
@@ -215,6 +217,29 @@ func DeleteVehicle(pool *pgxpool.Pool, id int) error {
 	}
 	if cmdTag.RowsAffected() == 0 {
 		return fmt.Errorf("транспорт не знайдено")
+	}
+	return nil
+}
+
+// AddVehicleModel додає нову модель транспорту
+func AddVehicleModel(pool *pgxpool.Pool, name, vType string, batteryCapacity, maxSpeed int) (int, error) {
+	query := `INSERT INTO vehicle_models (name, type, battery_capacity_wh, max_speed) VALUES ($1, $2, $3, $4) RETURNING id`
+	var id int
+	if err := pool.QueryRow(context.Background(), query, name, vType, batteryCapacity, maxSpeed).Scan(&id); err != nil {
+		return 0, fmt.Errorf("помилка створення моделі: %w", err)
+	}
+	return id, nil
+}
+
+// DeleteVehicleModel виконує "м'яке" видалення моделі (щоб не зламати існуючі самокати)
+func DeleteVehicleModel(pool *pgxpool.Pool, id int) error {
+	query := `UPDATE vehicle_models SET deleted_at = NOW() WHERE id = $1`
+	cmdTag, err := pool.Exec(context.Background(), query, id)
+	if err != nil {
+		return fmt.Errorf("помилка видалення моделі: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("модель не знайдено")
 	}
 	return nil
 }
