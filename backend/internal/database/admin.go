@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -35,6 +36,50 @@ func UpdateVehicleStatus(pool *pgxpool.Pool, vehicleID int, newStatus string) er
 		return fmt.Errorf("самокат не знайдено")
 	}
 	return nil
+}
+
+// GetAllRidesAdmin повертає історію всіх поїздок для адмін-панелі
+func GetAllRidesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
+	query := `
+		SELECT 
+			r.id, r.user_id, u.email AS user_email, 
+			r.vehicle_id, v.uuid AS vehicle_uuid, 
+			r.status, r.start_time, r.end_time, r.total_price
+		FROM rides r
+		JOIN users u ON r.user_id = u.id
+		JOIN vehicles v ON r.vehicle_id = v.id
+		ORDER BY r.start_time DESC
+	`
+	rows, err := pool.Query(context.Background(), query)
+	if err != nil {
+		return nil, fmt.Errorf("помилка запиту поїздок: %w", err)
+	}
+	defer rows.Close()
+
+	rides := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id, userID, vehicleID int
+		var userEmail, vehicleUUID, status string
+		var startTime time.Time
+		var endTime *time.Time
+		var totalPrice float64
+
+		if err := rows.Scan(&id, &userID, &userEmail, &vehicleID, &vehicleUUID, &status, &startTime, &endTime, &totalPrice); err != nil {
+			return nil, err
+		}
+		rides = append(rides, map[string]interface{}{
+			"id":           id,
+			"user_id":      userID,
+			"user_email":   userEmail,
+			"vehicle_id":   vehicleID,
+			"vehicle_uuid": vehicleUUID,
+			"status":       status,
+			"start_time":   startTime,
+			"end_time":     endTime,
+			"total_price":  totalPrice,
+		})
+	}
+	return rides, nil
 }
 
 // GetAllVehiclesAdmin повертає список абсолютно усіх самокатів для панелі адміністратора
@@ -219,6 +264,47 @@ func DeleteTariff(pool *pgxpool.Pool, id int) error {
 	}
 	if cmdTag.RowsAffected() == 0 {
 		return fmt.Errorf("тариф не знайдено")
+	}
+	return nil
+}
+
+// GetAllUsersAdmin повертає список усіх користувачів
+func GetAllUsersAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
+	query := `SELECT id, name, email, phone, role, balance, is_blocked FROM users WHERE deleted_at IS NULL ORDER BY id DESC`
+	rows, err := pool.Query(context.Background(), query)
+	if err != nil {
+		return nil, fmt.Errorf("помилка запиту користувачів: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id int
+		var name, email, phone, role string
+		var balance float64
+		var isBlocked bool
+
+		if err := rows.Scan(&id, &name, &email, &phone, &role, &balance, &isBlocked); err != nil {
+			return nil, err
+		}
+		users = append(users, map[string]interface{}{
+			"id":         id,
+			"name":       name,
+			"email":      email,
+			"phone":      phone,
+			"role":       role,
+			"balance":    balance,
+			"is_blocked": isBlocked,
+		})
+	}
+	return users, nil
+}
+
+// ToggleUserBlock блокує або розблоковує користувача (не дозволяє блокувати адмінів)
+func ToggleUserBlock(pool *pgxpool.Pool, userID int, isBlocked bool) error {
+	query := `UPDATE users SET is_blocked = $1 WHERE id = $2 AND role != 'admin' AND deleted_at IS NULL`
+	if _, err := pool.Exec(context.Background(), query, isBlocked, userID); err != nil {
+		return fmt.Errorf("помилка оновлення статусу користувача: %w", err)
 	}
 	return nil
 }

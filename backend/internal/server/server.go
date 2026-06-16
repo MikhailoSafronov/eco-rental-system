@@ -67,6 +67,9 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		r.Patch("/api/admin/tariffs/{id}", handlers.UpdateTariff(dbPool))
 		r.Post("/api/admin/tariffs", handlers.AddTariff(dbPool))
 		r.Delete("/api/admin/tariffs/{id}", handlers.DeleteTariff(dbPool))
+		r.Get("/api/admin/users", handlers.GetAllUsersAdmin(dbPool))
+		r.Patch("/api/admin/users/{id}/block", handlers.ToggleUserBlock(dbPool))
+		r.Get("/api/admin/rides", handlers.GetAllRidesAdmin(dbPool))
 	})
 
 	return r

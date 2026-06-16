@@ -88,6 +88,17 @@ export default function Profile() {
     <div className="mx-auto max-w-4xl p-6">
       <h1 className="mb-6 text-3xl font-bold text-gray-800">Мій профіль 👤</h1>
 
+      {/* Банер про блокування */}
+      {user?.is_blocked && (
+        <div className="mb-8 flex items-start gap-4 rounded-xl border-l-4 border-red-500 bg-red-50 p-5 shadow-sm">
+          <span className="text-3xl">⚠️</span>
+          <div>
+            <h2 className="text-lg font-bold text-red-800">Ваш акаунт заблоковано</h2>
+            <p className="mt-1 text-sm text-red-700">Ви порушили правила сервісу. Оренда нового транспорту тимчасово недоступна. Зверніться до служби підтримки для з'ясування обставин.</p>
+          </div>
+        </div>
+      )}
+
       {/* Картка балансу */}
       <div className="mb-8 flex flex-col justify-between items-center rounded-xl bg-white p-6 shadow-md border-l-4 border-green-500 sm:flex-row gap-4">
         <div>

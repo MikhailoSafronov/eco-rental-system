@@ -22,9 +22,13 @@ func StartRide(pool *pgxpool.Pool, userID int, vehicleID int) (*models.Ride, err
 	defer tx.Rollback(ctx)
 
 	var balance float64
-	err = tx.QueryRow(ctx, "SELECT balance FROM users WHERE id = $1 AND deleted_at IS NULL", userID).Scan(&balance)
+	var isBlocked bool
+	err = tx.QueryRow(ctx, "SELECT balance, is_blocked FROM users WHERE id = $1 AND deleted_at IS NULL", userID).Scan(&balance, &isBlocked)
 	if err != nil {
-		return nil, fmt.Errorf("помилка перевірки балансу: %w", err)
+		return nil, fmt.Errorf("помилка перевірки користувача: %w", err)
+	}
+	if isBlocked {
+		return nil, fmt.Errorf("ваш акаунт заблоковано за порушення правил. Зверніться до підтримки")
 	}
 	if balance < 50.00 {
 		return nil, fmt.Errorf("недостатньо коштів на балансі (мінімум 50.00 грн)")

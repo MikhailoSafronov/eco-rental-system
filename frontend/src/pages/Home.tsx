@@ -66,6 +66,15 @@ export default function Home() {
   // Отримуємо доступ до кешу React Query
   const queryClient = useQueryClient()
   
+  // Отримуємо профіль користувача для перевірки статусу блокування
+  const { data: user } = useQuery<{ is_blocked: boolean }>({
+    queryKey: ['profile'],
+    queryFn: async () => {
+      const res = await api.get('/users/me')
+      return res.data
+    }
+  })
+
   // Стан для фотографії паркування
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -231,6 +240,19 @@ export default function Home() {
     // Використовуємо прямий style замість Tailwind, щоб гарантувати висоту
     <div style={{ height: '85vh', width: '100%', display: 'block', position: 'relative' }}>
       
+      {/* Банер про блокування на головній мапі */}
+      {user?.is_blocked && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm rounded-xl border-l-4 border-red-500 bg-white/95 backdrop-blur p-4 shadow-xl">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🚫</span>
+            <div>
+              <h3 className="text-sm font-bold text-red-800">Ваш акаунт заблоковано</h3>
+              <p className="mt-1 text-xs text-red-700">Оренда транспорту тимчасово недоступна.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Індикатори стану */}
       {isLoading && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 rounded-md bg-white px-4 py-2 shadow-md font-medium text-green-700">
@@ -392,10 +414,10 @@ export default function Home() {
 
                 <button 
                   onClick={() => startRideMutation.mutate(vehicle.id)}
-                  disabled={startRideMutation.isPending}
-                  className="w-full rounded bg-green-500 px-3 py-2 font-medium text-white shadow-sm transition hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={startRideMutation.isPending || user?.is_blocked}
+                  className={`w-full rounded px-3 py-2 font-medium text-white shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed ${user?.is_blocked ? 'bg-red-500' : 'bg-green-500 hover:bg-green-600'}`}
                 >
-                  {startRideMutation.isPending ? 'Запуск...' : 'Орендувати зараз'}
+                  {user?.is_blocked ? '🚫 Заблоковано' : startRideMutation.isPending ? 'Запуск...' : 'Орендувати зараз'}
                 </button>
               </div>
             </Popup>

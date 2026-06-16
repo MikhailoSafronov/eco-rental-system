@@ -17,6 +17,30 @@ interface AdminVehicle {
   longitude: number;
 }
 
+// Описуємо структуру користувача
+interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  balance: number;
+  is_blocked: boolean;
+}
+
+// Описуємо структуру поїздки для адмінки
+interface AdminRide {
+  id: number;
+  user_id: number;
+  user_email: string;
+  vehicle_id: number;
+  vehicle_uuid: string;
+  status: string;
+  start_time: string;
+  end_time?: string;
+  total_price: number;
+}
+
 const vehicleTypeLabels: Record<string, string> = {
   scooter: '🛴 Самокат',
   bike: '🚲 Велосипед',
@@ -91,6 +115,24 @@ export default function Admin() {
     queryFn: async () => {
       const res = await api.get('/zones');
       return res.data?.zones || res.data || [];
+    }
+  });
+
+  // Отримуємо всіх користувачів
+  const { data: usersData } = useQuery<AdminUser[]>({
+    queryKey: ['admin', 'users'],
+    queryFn: async () => {
+      const res = await api.get('/admin/users');
+      return res.data || [];
+    }
+  });
+
+  // Отримуємо всі поїздки
+  const { data: ridesData } = useQuery<AdminRide[]>({
+    queryKey: ['admin', 'rides'],
+    queryFn: async () => {
+      const res = await api.get('/admin/rides');
+      return res.data || [];
     }
   });
 
@@ -249,6 +291,21 @@ export default function Admin() {
     onError: (error: Error) => {
       const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
       alert(`Помилка видалення тарифу:\n${message}`);
+    }
+  });
+
+  // Мутація для блокування/розблокування користувача
+  const toggleUserBlockMutation = useMutation({
+    mutationFn: async ({ id, is_blocked }: { id: number; is_blocked: boolean }) => {
+      const res = await api.patch(`/admin/users/${id}/block`, { is_blocked });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка зміни статусу користувача:\n${message}`);
     }
   });
 
@@ -423,6 +480,117 @@ export default function Admin() {
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Керування користувачами 👥</h2>
+      </div>
+      
+      <div className="overflow-hidden rounded-xl bg-white shadow-md mb-12">
+        <table className="w-full text-left text-sm text-gray-600">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-700 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Користувач</th>
+              <th className="px-6 py-4">Контакти</th>
+              <th className="px-6 py-4">Баланс</th>
+              <th className="px-6 py-4">Статус</th>
+              <th className="px-6 py-4 text-right">Дії</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {usersData?.map((u) => (
+              <tr key={u.id} className="hover:bg-gray-50 transition">
+                <td className="px-6 py-4 font-bold text-gray-800">#{u.id}</td>
+                <td className="px-6 py-4">
+                  <div className="font-bold text-gray-800">{u.name}</div>
+                  <div className="text-xs text-gray-500 uppercase">{u.role}</div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-gray-800">{u.email}</div>
+                  <div className="text-gray-500">{u.phone}</div>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`font-bold ${u.balance < 0 ? 'text-red-500' : 'text-green-600'}`}>{u.balance.toFixed(2)} ₴</span>
+                </td>
+                <td className="px-6 py-4">
+                  {u.is_blocked ? (
+                    <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">Заблокований</span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Активний</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 text-right">
+                  {u.role !== 'admin' && (
+                    <button 
+                      onClick={() => {
+                        if (window.confirm(`Ви впевнені, що хочете ${u.is_blocked ? 'РОЗБЛОКУВАТИ' : 'ЗАБЛОКУВАТИ'} користувача ${u.name}?`)) {
+                          toggleUserBlockMutation.mutate({ id: u.id, is_blocked: !u.is_blocked });
+                        }
+                      }}
+                      disabled={toggleUserBlockMutation.isPending}
+                      className={`font-bold transition disabled:opacity-50 ${u.is_blocked ? 'text-green-600 hover:text-green-800' : 'text-red-500 hover:text-red-700'}`}
+                    >
+                      {u.is_blocked ? 'Розблокувати' : 'Заблокувати'}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Історія всіх поїздок 🗺️</h2>
+      </div>
+      
+      <div className="overflow-hidden rounded-xl bg-white shadow-md mb-12">
+        <table className="w-full text-left text-sm text-gray-600">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-700 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Користувач</th>
+              <th className="px-6 py-4">Транспорт</th>
+              <th className="px-6 py-4">Статус / Час</th>
+              <th className="px-6 py-4 text-right">Сума (₴)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {ridesData?.map((ride) => (
+              <tr key={ride.id} className="hover:bg-gray-50 transition">
+                <td className="px-6 py-4 font-bold text-gray-800">#{ride.id}</td>
+                <td className="px-6 py-4">
+                  <div className="text-gray-800">{ride.user_email}</div>
+                  <div className="text-xs text-gray-500">ID: {ride.user_id}</div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="font-medium text-gray-800">#{ride.vehicle_id}</div>
+                  <div className="text-xs text-gray-400 font-mono">{ride.vehicle_uuid.split('-')[0]}...</div>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ride.status === 'completed' ? 'bg-green-100 text-green-800' : ride.status === 'active' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                    {ride.status === 'completed' ? 'Завершена' : ride.status === 'active' ? 'Активна' : ride.status}
+                  </span>
+                  <div className="mt-1 text-xs text-gray-500">
+                    Початок: {new Date(ride.start_time).toLocaleString('uk-UA')}
+                  </div>
+                  {ride.end_time && (
+                    <div className="text-xs text-gray-500">
+                      Кінець: {new Date(ride.end_time).toLocaleString('uk-UA')}
+                    </div>
+                  )}
+                </td>
+                <td className="px-6 py-4 text-right font-bold text-gray-800">
+                  {Number(ride.total_price).toFixed(2)} ₴
+                </td>
+              </tr>
+            ))}
+            {(!ridesData || ridesData.length === 0) && (
+              <tr><td colSpan={5} className="px-6 py-4 text-center">Немає поїздок у системі</td></tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -282,3 +282,60 @@ func DeleteTariff(pool *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"message": "Тариф успішно видалено"})
 	}
 }
+
+// GetAllUsersAdmin повертає список усіх користувачів
+func GetAllUsersAdmin(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		users, err := database.GetAllUsersAdmin(pool)
+		if err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(users)
+	}
+}
+
+// ToggleUserBlock блокує або розблоковує користувача
+func ToggleUserBlock(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID користувача")
+			return
+		}
+
+		var req struct {
+			IsBlocked bool `json:"is_blocked"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Невалідний JSON")
+			return
+		}
+
+		if err := database.ToggleUserBlock(pool, id, req.IsBlocked); err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Статус користувача оновлено"})
+	}
+}
+
+// GetAllRidesAdmin повертає всі поїздки системи для адмін-панелі
+func GetAllRidesAdmin(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rides, err := database.GetAllRidesAdmin(pool)
+		if err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(rides)
+	}
+}
