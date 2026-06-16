@@ -202,3 +202,83 @@ func DeleteParkingZone(pool *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"message": "Паркувальну зону успішно видалено"})
 	}
 }
+
+// UpdateTariff обробляє оновлення цін тарифу
+func UpdateTariff(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID тарифу")
+			return
+		}
+
+		var req struct {
+			UnlockPrice float64 `json:"unlock_price"`
+			MinutePrice float64 `json:"minute_price"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Невалідний JSON")
+			return
+		}
+
+		if err := database.UpdateTariff(pool, id, req.UnlockPrice, req.MinutePrice); err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Тариф успішно оновлено"})
+	}
+}
+
+// AddTariff обробляє створення нового тарифу
+func AddTariff(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name        string  `json:"name"`
+			VehicleType string  `json:"vehicle_type"`
+			UnlockPrice float64 `json:"unlock_price"`
+			MinutePrice float64 `json:"minute_price"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Невалідний JSON")
+			return
+		}
+
+		id, err := database.AddTariff(pool, req.Name, req.VehicleType, req.UnlockPrice, req.MinutePrice)
+		if err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Тариф успішно додано",
+			"id":      id,
+		})
+	}
+}
+
+// DeleteTariff обробляє видалення тарифу
+func DeleteTariff(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID тарифу")
+			return
+		}
+
+		if err := database.DeleteTariff(pool, id); err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Тариф успішно видалено"})
+	}
+}

@@ -123,7 +123,7 @@ func GetAllModelsAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 
 // GetAllTariffsAdmin повертає всі тарифи з бази (для випадаючого списку в адмінці)
 func GetAllTariffsAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
-	query := `SELECT id, name, unlock_price, minute_price FROM tariffs ORDER BY id ASC`
+	query := `SELECT id, name, type, unlock_price, minute_price FROM tariffs ORDER BY type, id ASC`
 	rows, err := pool.Query(context.Background(), query)
 	if err != nil {
 		return nil, fmt.Errorf("помилка запиту тарифів: %w", err)
@@ -133,14 +133,15 @@ func GetAllTariffsAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 	tariffs := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		var id int
-		var name string
+		var name, vType string
 		var unlock, minute float64
-		if err := rows.Scan(&id, &name, &unlock, &minute); err != nil {
+		if err := rows.Scan(&id, &name, &vType, &unlock, &minute); err != nil {
 			return nil, err
 		}
 		tariffs = append(tariffs, map[string]interface{}{
 			"id":           id,
 			"name":         name,
+			"vehicle_type": vType,
 			"unlock_price": unlock,
 			"minute_price": minute,
 		})
@@ -182,6 +183,42 @@ func DeleteParkingZone(pool *pgxpool.Pool, id int) error {
 	}
 	if cmdTag.RowsAffected() == 0 {
 		return fmt.Errorf("зону не знайдено")
+	}
+	return nil
+}
+
+// UpdateTariff оновлює ціни існуючого тарифу
+func UpdateTariff(pool *pgxpool.Pool, id int, unlockPrice, minutePrice float64) error {
+	query := `UPDATE tariffs SET unlock_price = $1, minute_price = $2 WHERE id = $3`
+	cmdTag, err := pool.Exec(context.Background(), query, unlockPrice, minutePrice, id)
+	if err != nil {
+		return fmt.Errorf("помилка оновлення тарифу: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("тариф не знайдено")
+	}
+	return nil
+}
+
+// AddTariff додає новий тариф
+func AddTariff(pool *pgxpool.Pool, name, vehicleType string, unlockPrice, minutePrice float64) (int, error) {
+	query := `INSERT INTO tariffs (name, type, unlock_price, minute_price) VALUES ($1, $2, $3, $4) RETURNING id`
+	var id int
+	if err := pool.QueryRow(context.Background(), query, name, vehicleType, unlockPrice, minutePrice).Scan(&id); err != nil {
+		return 0, fmt.Errorf("помилка створення тарифу: %w", err)
+	}
+	return id, nil
+}
+
+// DeleteTariff видаляє тариф з бази
+func DeleteTariff(pool *pgxpool.Pool, id int) error {
+	query := `DELETE FROM tariffs WHERE id = $1`
+	cmdTag, err := pool.Exec(context.Background(), query, id)
+	if err != nil {
+		return fmt.Errorf("помилка видалення (можливо, цей тариф зараз використовується транспортом): %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("тариф не знайдено")
 	}
 	return nil
 }

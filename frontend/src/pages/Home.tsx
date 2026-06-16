@@ -9,7 +9,7 @@ import type { GeoJsonObject } from 'geojson'
 // Інтерфейс для транспорту (узгодьте поля з тим, як бекенд повертає дані)
 interface Vehicle {
   id: number;
-  vehicle_type: 'scooter' | 'bike' | 'moped';
+  vehicle_type: 'scooter' | 'bike' | 'moped' | 'monowheel';
   model_name?: string; 
   battery_level: number;
   latitude: number;
@@ -38,6 +38,7 @@ const getVehicleIcon = (type: string) => {
     scooter: '🛴',
     bike: '🚲',
     moped: '🛵',
+    monowheel: '🛞',
   };
   
   // Якщо тип не знайдено в словнику, ставимо знак питання
@@ -267,6 +268,7 @@ export default function Home() {
               <button onClick={() => setFilterType('scooter')} className={`flex-1 rounded-md py-1 text-lg transition ${filterType === 'scooter' ? 'bg-white shadow' : 'opacity-60 hover:opacity-100'}`}>🛴</button>
               <button onClick={() => setFilterType('bike')} className={`flex-1 rounded-md py-1 text-lg transition ${filterType === 'bike' ? 'bg-white shadow' : 'opacity-60 hover:opacity-100'}`}>🚲</button>
               <button onClick={() => setFilterType('moped')} className={`flex-1 rounded-md py-1 text-lg transition ${filterType === 'moped' ? 'bg-white shadow' : 'opacity-60 hover:opacity-100'}`}>🛵</button>
+              <button onClick={() => setFilterType('monowheel')} className={`flex-1 rounded-md py-1 text-lg transition ${filterType === 'monowheel' ? 'bg-white shadow' : 'opacity-60 hover:opacity-100'}`}>🛞</button>
             </div>
 
             {/* Фільтр за ціною */}

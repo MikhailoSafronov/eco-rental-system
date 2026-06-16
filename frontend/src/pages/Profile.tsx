@@ -12,6 +12,7 @@ interface Ride {
   end_time?: string;
   total_price: number;
   end_photo_url?: string;
+  track?: { latitude: number; longitude: number; timestamp: string }[];
 }
 
 // Описуємо структуру платежу, яку очікуємо від бекенда
@@ -30,6 +31,9 @@ export default function Profile() {
 
   // Стан для перемикання вкладок
   const [activeTab, setActiveTab] = useState<'rides' | 'payments'>('rides');
+  
+  // Стан для обраної поїздки (для модального вікна деталей)
+  const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
 
   // Отримуємо дані користувача (профіль + баланс)
   const { data: user, isLoading: isUserLoading } = useQuery({
@@ -46,7 +50,8 @@ export default function Profile() {
     queryFn: async () => {
       const res = await api.get('/rides/history');
       // Безпечно витягуємо масив поїздок з відповіді бекенда
-      return res.data?.rides || res.data || [];
+      const data = res.data?.rides || res.data;
+      return Array.isArray(data) ? data : [];
     }
   });
 
@@ -55,7 +60,8 @@ export default function Profile() {
     queryKey: ['payments', 'history'],
     queryFn: async () => {
       const res = await api.get('/users/payments');
-      return res.data?.payments || res.data || [];
+      const data = res.data?.payments || res.data;
+      return Array.isArray(data) ? data : [];
     }
   });
 
@@ -137,9 +143,18 @@ export default function Profile() {
           ) : !historyList || historyList.length === 0 ? (
             <p className="p-6 text-center text-gray-500">У вас ще немає завершених поїздок.</p>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <>
+              <p className="px-5 pt-4 pb-1 text-sm text-gray-500">
+                💡 Підказка: клікніть двічі на поїздку, щоб переглянути деталі.
+              </p>
+              <div className="divide-y divide-gray-100">
               {historyList.map((ride) => (
-                <div key={ride.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 hover:bg-gray-50 transition">
+                <div 
+                  key={ride.id} 
+                  onDoubleClick={() => setSelectedRide(ride)}
+                  title="Двічі клікніть для деталей"
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 hover:bg-gray-50 transition cursor-pointer select-none"
+                >
                   <div className="flex items-center gap-4 mb-3 sm:mb-0">
                     {/* Мініатюра фото паркування або заглушка */}
                     {ride.end_photo_url ? (
@@ -176,7 +191,8 @@ export default function Profile() {
                   </div>
                 </div>
               ))}
-            </div>
+              </div>
+            </>
           )
         )}
 
@@ -220,6 +236,69 @@ export default function Profile() {
           )
         )}
       </div>
+
+      {/* Модальне вікно з деталями поїздки */}
+      {selectedRide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-extrabold text-gray-800">Деталі поїздки #{selectedRide.id}</h2>
+              <button onClick={() => setSelectedRide(null)} className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4 text-sm sm:text-base">
+              <div className="flex justify-between border-b border-gray-100 pb-3">
+                <span className="text-gray-500">Статус:</span>
+                <span className={`font-bold ${selectedRide.status === 'completed' ? 'text-green-600' : selectedRide.status === 'active' ? 'text-blue-600' : 'text-gray-800'}`}>
+                  {selectedRide.status === 'completed' ? 'Завершена' : selectedRide.status === 'active' ? 'Активна' : selectedRide.status}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-3">
+                <span className="text-gray-500">ID транспорту:</span>
+                <span className="font-bold text-gray-800">#{selectedRide.vehicle_id}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-3">
+                <span className="text-gray-500">Початок:</span>
+                <span className="font-medium text-gray-800">{new Date(selectedRide.start_time).toLocaleString('uk-UA')}</span>
+              </div>
+              {selectedRide.end_time && (
+                <div className="flex justify-between border-b border-gray-100 pb-3">
+                  <span className="text-gray-500">Завершення:</span>
+                  <span className="font-medium text-gray-800">{new Date(selectedRide.end_time).toLocaleString('uk-UA')}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-b border-gray-100 pb-3 text-lg">
+                <span className="text-gray-600 font-bold">Списано коштів:</span>
+                <span className="font-extrabold text-gray-800">{selectedRide.total_price} ₴</span>
+              </div>
+              {selectedRide.track && selectedRide.track.length > 0 && (
+                <div className="flex justify-between border-b border-gray-100 pb-3">
+                  <span className="text-gray-500">Зафіксовано точок маршруту:</span>
+                  <span className="font-bold text-blue-600">{selectedRide.track.length} GPS точок</span>
+                </div>
+              )}
+              {selectedRide.end_photo_url && (
+                <div className="mt-2">
+                  <span className="block mb-2 font-medium text-gray-700">Фотографія паркування:</span>
+                  <img 
+                    src={`http://localhost:8080${selectedRide.end_photo_url}`} 
+                    alt="Фото завершення поїздки" 
+                    className="w-full h-auto max-h-64 object-cover rounded-xl border border-gray-200 shadow-sm"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 flex justify-end">
+              <button onClick={() => setSelectedRide(null)} className="w-full sm:w-auto rounded-xl bg-gray-800 px-6 py-3 font-bold text-white shadow-md transition hover:bg-gray-700 active:bg-gray-900">
+                Закрити
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -21,6 +21,7 @@ const vehicleTypeLabels: Record<string, string> = {
   scooter: '🛴 Самокат',
   bike: '🚲 Велосипед',
   moped: '🛵 Мопед',
+  monowheel: '🛞 Моноколесо',
 };
 
 export default function Admin() {
@@ -51,6 +52,12 @@ export default function Admin() {
   const [zoneName, setZoneName] = useState('');
   const [zoneCoordinates, setZoneCoordinates] = useState('');
 
+  // Стани для редагування тарифів
+  const [isEditTariffModalOpen, setIsEditTariffModalOpen] = useState(false);
+  const [editingTariff, setEditingTariff] = useState<{ id: number, name: string, unlock_price: number, minute_price: number } | null>(null);
+  const [isAddTariffModalOpen, setIsAddTariffModalOpen] = useState(false);
+  const [newTariffData, setNewTariffData] = useState({ name: '', vehicle_type: 'scooter', unlock_price: 15, minute_price: 3.5 });
+
   // Отримуємо ВСІ самокати (включно зі зламаними та орендованими)
   const { data: vehicles, isLoading, isError } = useQuery<AdminVehicle[]>({
     queryKey: ['admin', 'vehicles'],
@@ -70,7 +77,7 @@ export default function Admin() {
   });
 
   // Отримуємо список всіх тарифів
-  const { data: tariffs } = useQuery<{id: number, name: string, unlock_price: number, minute_price: number}[]>({
+  const { data: tariffs } = useQuery<{id: number, name: string, vehicle_type: string, unlock_price: number, minute_price: number}[]>({
     queryKey: ['admin', 'tariffs'],
     queryFn: async () => {
       const res = await api.get('/admin/tariffs');
@@ -189,6 +196,59 @@ export default function Admin() {
     onError: (error: Error) => {
       const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
       alert(`Помилка видалення зони:\n${message}`);
+    }
+  });
+
+  // Мутація для оновлення тарифу
+  const updateTariffMutation = useMutation({
+    mutationFn: async (data: { id: number; unlock_price: number; minute_price: number }) => {
+      const res = await api.patch(`/admin/tariffs/${data.id}`, {
+        unlock_price: data.unlock_price,
+        minute_price: data.minute_price,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tariffs'] });
+      setIsEditTariffModalOpen(false);
+      setEditingTariff(null);
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка оновлення тарифу:\n${message}`);
+    }
+  });
+
+  // Мутація для створення тарифу
+  const addTariffMutation = useMutation({
+    mutationFn: async (data: typeof newTariffData) => {
+      const res = await api.post('/admin/tariffs', data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tariffs'] });
+      setIsAddTariffModalOpen(false);
+      setNewTariffData({ name: '', vehicle_type: 'scooter', unlock_price: 15, minute_price: 3.5 });
+      alert('Новий тариф успішно створено! 💸');
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка додавання тарифу:\n${message}`);
+    }
+  });
+
+  // Мутація для видалення тарифу
+  const deleteTariffMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.delete(`/admin/tariffs/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tariffs'] });
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка видалення тарифу:\n${message}`);
     }
   });
 
@@ -315,6 +375,58 @@ export default function Admin() {
         </table>
       </div>
 
+      <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Управління тарифами 💰</h2>
+        <button 
+          onClick={() => setIsAddTariffModalOpen(true)}
+          className="rounded-xl bg-green-600 px-4 py-2 text-sm text-white font-bold transition hover:bg-green-700 shadow-md"
+        >
+          + Додати тариф
+        </button>
+      </div>
+      
+      <div className="overflow-hidden rounded-xl bg-white shadow-md mb-12">
+        <table className="w-full text-left text-sm text-gray-600">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-700 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Назва тарифу</th>
+              <th className="px-6 py-4">Вид транспорту</th>
+              <th className="px-6 py-4">Ціна розблокування (₴)</th>
+              <th className="px-6 py-4">Ціна за хвилину (₴)</th>
+              <th className="px-6 py-4 text-right">Дії</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {tariffs?.map((tariff) => (
+              <tr key={tariff.id} className="hover:bg-gray-50 transition">
+                <td className="px-6 py-4 font-bold text-gray-800">#{tariff.id}</td>
+                <td className="px-6 py-4 font-medium text-gray-800">{tariff.name}</td>
+                <td className="px-6 py-4">
+                  {vehicleTypeLabels[tariff.vehicle_type] || tariff.vehicle_type}
+                </td>
+                <td className="px-6 py-4"><span className="font-bold text-green-600">{tariff.unlock_price} ₴</span></td>
+                <td className="px-6 py-4"><span className="font-bold text-green-600">{tariff.minute_price} ₴</span></td>
+                <td className="px-6 py-4 text-right">
+                  <button 
+                    onClick={() => { setEditingTariff(tariff); setIsEditTariffModalOpen(true); }}
+                    className="text-blue-500 hover:text-blue-700 font-bold transition mr-4"
+                  >
+                    Редагувати
+                  </button>
+                  <button 
+                    onClick={() => { if (window.confirm(`Видалити тариф "${tariff.name}"? Зауважте: неможливо видалити тариф, якщо він використовується транспортом.`)) deleteTariffMutation.mutate(tariff.id); }}
+                    className="text-red-500 hover:text-red-700 font-bold transition"
+                  >
+                    Видалити
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {/* Модальне вікно для додавання транспорту */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -331,13 +443,20 @@ export default function Admin() {
                     setSelectedType(newType);
                     // Автоматично обираємо першу модель з нового виду
                     const firstModel = models?.find(m => m.type === newType);
-                    if (firstModel) setNewVehicleData(prev => ({ ...prev, model_id: firstModel.id }));
+                    // Автоматично обираємо перший тариф з нового виду, щоб не відправити помилковий
+                    const firstTariff = tariffs?.find(t => t.vehicle_type === newType);
+                    setNewVehicleData(prev => ({ 
+                      ...prev, 
+                      model_id: firstModel ? firstModel.id : prev.model_id,
+                      tariff_id: firstTariff ? firstTariff.id : prev.tariff_id
+                    }));
                   }}
                   className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-800"
                 >
                   <option value="scooter">🛴 Самокат</option>
                   <option value="bike">🚲 Велосипед</option>
                   <option value="moped">🛵 Мопед</option>
+                  <option value="monowheel">🛞 Моноколесо</option>
                 </select>
               </div>
               
@@ -364,9 +483,12 @@ export default function Admin() {
                   onChange={e => setNewVehicleData({...newVehicleData, tariff_id: parseInt(e.target.value)})} 
                   className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-800"
                 >
-                  {tariffs?.map(t => (
+                  {tariffs?.filter(t => t.vehicle_type === selectedType).map(t => (
                     <option key={t.id} value={t.id}>{t.name} ({t.unlock_price}₴ + {t.minute_price}₴/хв)</option>
                   ))}
+                  {tariffs?.filter(t => t.vehicle_type === selectedType).length === 0 && (
+                    <option value={0} disabled>Немає тарифів для цього типу</option>
+                  )}
                 </select>
               </div>
               
@@ -440,6 +562,100 @@ export default function Admin() {
                 className="rounded-lg bg-green-600 px-4 py-2 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
               >
                 {addZoneMutation.isPending ? 'Збереження...' : 'Зберегти зону'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальне вікно для редагування тарифу */}
+      {isEditTariffModalOpen && editingTariff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold text-gray-800">Редагувати тариф 💸</h2>
+            <p className="mb-4 text-sm font-medium text-gray-600">{editingTariff.name}</p>
+            
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Ціна старту (₴)</label>
+                <input type="number" step="0.5" min="0" value={editingTariff.unlock_price} onChange={e => setEditingTariff({...editingTariff, unlock_price: parseFloat(e.target.value) || 0})} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition" />
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Ціна за хвилину (₴)</label>
+                <input type="number" step="0.5" min="0" value={editingTariff.minute_price} onChange={e => setEditingTariff({...editingTariff, minute_price: parseFloat(e.target.value) || 0})} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition" />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button 
+                onClick={() => { setIsEditTariffModalOpen(false); setEditingTariff(null); }} 
+                className="rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300"
+              >
+                Скасувати
+              </button>
+              <button 
+                onClick={() => updateTariffMutation.mutate(editingTariff)}
+                disabled={updateTariffMutation.isPending}
+                className="rounded-lg bg-green-600 px-4 py-2 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+              >
+                {updateTariffMutation.isPending ? 'Збереження...' : 'Зберегти'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальне вікно для створення нового тарифу */}
+      {isAddTariffModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold text-gray-800">Створити новий тариф 💸</h2>
+            
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Назва тарифу</label>
+                <input type="text" value={newTariffData.name} onChange={e => setNewTariffData({...newTariffData, name: e.target.value})} placeholder="Наприклад: Вихідний день" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition" />
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Прив'язка до виду транспорту</label>
+                <select 
+                  value={newTariffData.vehicle_type} 
+                  onChange={e => setNewTariffData({...newTariffData, vehicle_type: e.target.value})} 
+                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                >
+                  <option value="scooter">🛴 Самокат</option>
+                  <option value="bike">🚲 Велосипед</option>
+                  <option value="moped">🛵 Мопед</option>
+                  <option value="monowheel">🛞 Моноколесо</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Ціна старту (₴)</label>
+                <input type="number" step="0.5" min="0" value={newTariffData.unlock_price} onChange={e => setNewTariffData({...newTariffData, unlock_price: parseFloat(e.target.value) || 0})} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition" />
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Ціна за хвилину (₴)</label>
+                <input type="number" step="0.5" min="0" value={newTariffData.minute_price} onChange={e => setNewTariffData({...newTariffData, minute_price: parseFloat(e.target.value) || 0})} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition" />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button 
+                onClick={() => setIsAddTariffModalOpen(false)} 
+                className="rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300"
+              >
+                Скасувати
+              </button>
+              <button 
+                onClick={() => addTariffMutation.mutate(newTariffData)}
+                disabled={addTariffMutation.isPending || !newTariffData.name.trim()}
+                className="rounded-lg bg-green-600 px-4 py-2 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+              >
+                {addTariffMutation.isPending ? 'Створення...' : 'Створити'}
               </button>
             </div>
           </div>
