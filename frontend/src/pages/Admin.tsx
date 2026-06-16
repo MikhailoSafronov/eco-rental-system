@@ -51,11 +51,6 @@ export default function Admin() {
   const [zoneName, setZoneName] = useState('');
   const [zoneCoordinates, setZoneCoordinates] = useState('');
 
-  // Перевірка ролі (захист на рівні фронтенду)
-  if (user?.role !== 'admin') {
-    return <Navigate to="/" replace />;
-  }
-
   // Отримуємо ВСІ самокати (включно зі зламаними та орендованими)
   const { data: vehicles, isLoading, isError } = useQuery<AdminVehicle[]>({
     queryKey: ['admin', 'vehicles'],
@@ -196,6 +191,11 @@ export default function Admin() {
       alert(`Помилка видалення зони:\n${message}`);
     }
   });
+
+  // Перевірка ролі (захист на рівні фронтенду) ПОВИННА БУТИ ПІСЛЯ ВСІХ ХУКІВ
+  if (user?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
 
   if (isLoading) return <div className="p-8 text-center text-gray-500">Завантаження автопарку...</div>;
   if (isError) return <div className="p-8 text-center text-red-500 font-bold">Помилка доступу до бази даних.</div>;

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/axios'
 import { isAxiosError } from 'axios'
+import type { GeoJsonObject } from 'geojson'
 
 // Інтерфейс для транспорту (узгодьте поля з тим, як бекенд повертає дані)
 interface Vehicle {
@@ -21,7 +22,7 @@ interface Vehicle {
 interface ParkingZone {
   id: number;
   name: string;
-  geojson: string | object; // Дані у форматі GeoJSON
+  geojson: GeoJsonObject; // Строгий тип для географічних даних
 }
 
 // Інтерфейс для історії поїздок
@@ -71,6 +72,12 @@ export default function Home() {
   // Стан для відображення координат при кліку на мапі
   const [clickedCoords, setClickedCoords] = useState<[number, number] | null>(null)
 
+  // Стани для фільтрації та сортування на мапі
+  const [filterType, setFilterType] = useState<string>('all')
+  const [maxUnlockPrice, setMaxUnlockPrice] = useState<number | ''>('')
+  const [maxMinutePrice, setMaxMinutePrice] = useState<number | ''>('')
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(true)
+
   // Автоматично приховуємо цифри координат через 2.5 секунди
   useEffect(() => {
     if (clickedCoords) {
@@ -87,12 +94,13 @@ export default function Home() {
     queryKey: ['zones'],
     queryFn: async () => {
       const response = await api.get('/zones')
-      const zones = response.data?.zones || response.data || []
+      // Вказуємо структуру сирих даних, що приходять з бекенду (geojson може бути рядком)
+      const zones: Array<{ id: number; name: string; geojson: string | GeoJsonObject }> = response.data?.zones || response.data || []
       
       // Підстраховка: PostGIS часто віддає geojson у вигляді рядка, а Leaflet вимагає об'єкт
-      return zones.map((z: ParkingZone) => ({
+      return zones.map((z) => ({
         ...z,
-        geojson: typeof z.geojson === 'string' ? JSON.parse(z.geojson) : z.geojson
+        geojson: (typeof z.geojson === 'string' ? JSON.parse(z.geojson) : z.geojson) as GeoJsonObject
       }))
     },
     refetchOnWindowFocus: false, // Зони змінюються дуже рідко, тому зайвий раз не оновлюємо
@@ -124,6 +132,29 @@ export default function Home() {
 
   // Шукаємо, чи є серед поїздок активна
   const activeRide = historyData?.find((r) => r.status === 'active') || null
+
+  // Логіка фільтрації та сортування транспорту (виконується ефективно через useMemo)
+  const processedVehicles = useMemo(() => {
+    if (!vehicles) return [];
+    let result = [...vehicles];
+
+    // Фільтрація за типом
+    if (filterType !== 'all') {
+      result = result.filter((v) => v.vehicle_type === filterType);
+    }
+
+    // Фільтрація за максимальною ціною старту (якщо вказана)
+    if (maxUnlockPrice !== '') {
+      result = result.filter((v) => v.unlock_price <= Number(maxUnlockPrice));
+    }
+
+    // Фільтрація за максимальною ціною за хвилину (якщо вказана)
+    if (maxMinutePrice !== '') {
+      result = result.filter((v) => v.minute_price <= Number(maxMinutePrice));
+    }
+
+    return result;
+  }, [vehicles, filterType, maxUnlockPrice, maxMinutePrice]);
 
   // Мутація для початку оренди
   const startRideMutation = useMutation({
@@ -211,6 +242,77 @@ export default function Home() {
         </div>
       )}
 
+      {/* Панель фільтрації та сортування */}
+      <div className={`absolute top-4 right-4 z-[1000] flex flex-col gap-4 rounded-xl border border-black/10 bg-white/80 p-4 shadow-xl backdrop-blur-sm transition-all duration-300 ${isFiltersExpanded ? 'w-64' : 'w-auto min-w-[140px]'}`}>
+        <div 
+          className="flex cursor-pointer items-center justify-between gap-4"
+          onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
+        >
+          <div>
+            <h3 className="text-base font-bold text-gray-800">Фільтри</h3>
+            {isFiltersExpanded && <p className="text-xs text-gray-500">Знайдіть ідеальний транспорт</p>}
+          </div>
+          <button className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-200/50 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isFiltersExpanded ? 'rotate-180' : 'rotate-0'}`}>
+              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+        
+        {isFiltersExpanded && (
+          <>
+            {/* Фільтр за типом */}
+            <div className="flex gap-1 rounded-lg bg-gray-200/70 p-1">
+              <button onClick={() => setFilterType('all')} className={`flex-1 rounded-md py-1 text-sm font-bold transition ${filterType === 'all' ? 'bg-white shadow text-green-600' : 'text-gray-600 hover:bg-white/50'}`}>Всі</button>
+              <button onClick={() => setFilterType('scooter')} className={`flex-1 rounded-md py-1 text-lg transition ${filterType === 'scooter' ? 'bg-white shadow' : 'opacity-60 hover:opacity-100'}`}>🛴</button>
+              <button onClick={() => setFilterType('bike')} className={`flex-1 rounded-md py-1 text-lg transition ${filterType === 'bike' ? 'bg-white shadow' : 'opacity-60 hover:opacity-100'}`}>🚲</button>
+              <button onClick={() => setFilterType('moped')} className={`flex-1 rounded-md py-1 text-lg transition ${filterType === 'moped' ? 'bg-white shadow' : 'opacity-60 hover:opacity-100'}`}>🛵</button>
+            </div>
+
+            {/* Фільтр за ціною */}
+            <div className="flex flex-col gap-3">
+              <label className="text-xs font-semibold text-gray-600 block">Ціна, не більше ніж:</label>
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-gray-400">
+                    <path d="M14 6a4 4 0 0 1-4.899 3.899l-4.226 4.225a.75.75 0 0 1-1.061-1.06l4.225-4.226A4 4 0 1 1 14 6Zm-4-2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" />
+                  </svg>
+                </div>
+                <input 
+                  type="number" 
+                  min="0"
+                  value={maxUnlockPrice} 
+                  onChange={(e) => setMaxUnlockPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-7 text-sm outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+                  placeholder="Старт"
+                />
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                  <span className="text-gray-500 sm:text-sm">₴</span>
+                </div>
+              </div>
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-gray-400">
+                    <path fillRule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm.75-10.25a.75.75 0 0 0-1.5 0v4.5c0 .414.336.75.75.75h4.5a.75.75 0 0 0 0-1.5h-3.75V4.75Z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <input 
+                  type="number" 
+                  min="0"
+                  value={maxMinutePrice} 
+                  onChange={(e) => setMaxMinutePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-7 text-sm outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+                  placeholder="Хвилина"
+                />
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                  <span className="text-gray-500 sm:text-sm">₴</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
       <MapContainer 
         center={centerPosition} 
         zoom={14} 
@@ -259,7 +361,7 @@ export default function Home() {
         ))}
 
         {/* Динамічно відмальовуємо маркери з отриманих даних */}
-        {vehicles?.map((vehicle) => (
+        {processedVehicles?.map((vehicle) => (
           <Marker 
             key={vehicle.id} 
             position={[vehicle.latitude, vehicle.longitude]} 
