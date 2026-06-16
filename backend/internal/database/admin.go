@@ -157,3 +157,31 @@ func AddParkingZone(pool *pgxpool.Pool, name string, wktPolygon string) (int, er
 	}
 	return id, nil
 }
+
+// DeleteVehicle виконує "м'яке" видалення (Soft Delete) транспорту
+func DeleteVehicle(pool *pgxpool.Pool, id int) error {
+	// Ми не видаляємо рядок фізично, а лише ставимо мітку deleted_at.
+	// Додатково переводимо статус у 'maintenance', щоб ніхто не міг його орендувати.
+	query := `UPDATE vehicles SET deleted_at = NOW(), status = 'maintenance' WHERE id = $1`
+	cmdTag, err := pool.Exec(context.Background(), query, id)
+	if err != nil {
+		return fmt.Errorf("помилка видалення транспорту: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("транспорт не знайдено")
+	}
+	return nil
+}
+
+// DeleteParkingZone видаляє зону паркування з бази
+func DeleteParkingZone(pool *pgxpool.Pool, id int) error {
+	query := `DELETE FROM parking_zones WHERE id = $1`
+	cmdTag, err := pool.Exec(context.Background(), query, id)
+	if err != nil {
+		return fmt.Errorf("помилка видалення зони: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("зону не знайдено")
+	}
+	return nil
+}

@@ -160,3 +160,45 @@ func AddParkingZone(pool *pgxpool.Pool) http.HandlerFunc {
 		})
 	}
 }
+
+// DeleteVehicle обробляє видалення транспорту
+func DeleteVehicle(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID самоката")
+			return
+		}
+
+		if err := database.DeleteVehicle(pool, id); err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Транспорт успішно видалено"})
+	}
+}
+
+// DeleteParkingZone обробляє видалення зони
+func DeleteParkingZone(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID зони")
+			return
+		}
+
+		if err := database.DeleteParkingZone(pool, id); err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Паркувальну зону успішно видалено"})
+	}
+}

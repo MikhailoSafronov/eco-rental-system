@@ -83,6 +83,15 @@ export default function Admin() {
     }
   });
 
+  // Отримуємо список всіх паркувальних зон (для виводу і видалення)
+  const { data: parkingZones } = useQuery<{id: number, name: string}[]>({
+    queryKey: ['zones'],
+    queryFn: async () => {
+      const res = await api.get('/zones');
+      return res.data?.zones || res.data || [];
+    }
+  });
+
   // Мутація для зміни статусу (наприклад, відправити на ремонт)
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
@@ -158,6 +167,36 @@ export default function Admin() {
     }
   });
 
+  // Мутація для видалення транспорту
+  const deleteVehicleMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.delete(`/admin/vehicles/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'vehicles'] });
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка видалення:\n${message}`);
+    }
+  });
+
+  // Мутація для видалення зони
+  const deleteZoneMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.delete(`/admin/zones/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['zones'] });
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка видалення зони:\n${message}`);
+    }
+  });
+
   if (isLoading) return <div className="p-8 text-center text-gray-500">Завантаження автопарку...</div>;
   if (isError) return <div className="p-8 text-center text-red-500 font-bold">Помилка доступу до бази даних.</div>;
 
@@ -189,6 +228,7 @@ export default function Admin() {
               <th className="px-6 py-4">Модель</th>
               <th className="px-6 py-4">Заряд</th>
               <th className="px-6 py-4">Статус</th>
+              <th className="px-6 py-4 text-right">Дії</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -221,8 +261,56 @@ export default function Admin() {
                     <option value="broken">🔴 Зламаний</option>
                   </select>
                 </td>
+                <td className="px-6 py-4 text-right">
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Ви впевнені, що хочете видалити транспорт #${v.id}?`)) {
+                        deleteVehicleMutation.mutate(v.id);
+                      }
+                    }}
+                    disabled={deleteVehicleMutation.isPending}
+                    className="text-red-500 hover:text-red-700 font-bold transition disabled:opacity-50"
+                  >
+                    Видалити
+                  </button>
+                </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Паркувальні зони 🗺️</h2>
+      </div>
+      
+      <div className="overflow-hidden rounded-xl bg-white shadow-md mb-12">
+        <table className="w-full text-left text-sm text-gray-600">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-700 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Назва зони</th>
+              <th className="px-6 py-4 text-right">Дії</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {parkingZones?.map((zone) => (
+              <tr key={zone.id} className="hover:bg-gray-50 transition">
+                <td className="px-6 py-4 font-bold text-gray-800">#{zone.id}</td>
+                <td className="px-6 py-4 font-medium text-gray-800">{zone.name}</td>
+                <td className="px-6 py-4 text-right">
+                  <button 
+                    onClick={() => { if (window.confirm(`Видалити зону "${zone.name}"?`)) deleteZoneMutation.mutate(zone.id); }}
+                    className="text-red-500 hover:text-red-700 font-bold transition"
+                  >
+                    Видалити
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {(!parkingZones || parkingZones.length === 0) && (
+              <tr><td colSpan={3} className="px-6 py-4 text-center">Немає паркувальних зон</td></tr>
+            )}
           </tbody>
         </table>
       </div>

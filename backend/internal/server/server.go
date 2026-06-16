@@ -62,6 +62,8 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		r.Get("/api/admin/models", handlers.GetAllModelsAdmin(dbPool))
 		r.Get("/api/admin/tariffs", handlers.GetAllTariffsAdmin(dbPool))
 		r.Post("/api/admin/zones", handlers.AddParkingZone(dbPool))
+		r.Delete("/api/admin/vehicles/{id}", handlers.DeleteVehicle(dbPool))
+		r.Delete("/api/admin/zones/{id}", handlers.DeleteParkingZone(dbPool))
 	})
 
 	return r
