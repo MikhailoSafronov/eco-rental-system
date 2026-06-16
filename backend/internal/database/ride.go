@@ -74,6 +74,12 @@ func StartRide(pool *pgxpool.Pool, userID int, vehicleID int) (*models.Ride, err
 		return nil, fmt.Errorf("не вдалося створити поїздку: %w", err)
 	}
 
+	// Записуємо стартову координату в таблицю телеметрії одразу під час початку поїздки.
+	// Це потрібно, щоб лінія маршруту мала початкову точку для з'єднання при першому ж русі (симуляції).
+	if _, err := tx.Exec(ctx, "INSERT INTO ride_telemetry (ride_id, location) VALUES ($1, (SELECT location FROM vehicles WHERE id = $2))", ride.ID, vehicleID); err != nil {
+		return nil, fmt.Errorf("помилка збереження початкової телеметрії: %w", err)
+	}
+
 	if err = tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("не вдалося зафіксувати транзакцію: %w", err)
 	}
@@ -195,8 +201,16 @@ func GetUserRideHistory(pool *pgxpool.Pool, userID int) ([]map[string]interface{
 					) ORDER BY timestamp ASC
 				) FROM ride_telemetry rt WHERE rt.ride_id = r.id),
 				'[]'::json
-			) AS track
+			) AS track,
+			v.uuid AS vehicle_uuid,
+			ST_Y(v.location::geometry) AS current_lat,
+			ST_X(v.location::geometry) AS current_lon,
+			v.battery_level,
+			m.type AS vehicle_type,
+			m.name AS model_name
 		FROM rides r
+		JOIN vehicles v ON r.vehicle_id = v.id
+		JOIN vehicle_models m ON v.model_id = m.id
 		WHERE r.user_id = $1
 		ORDER BY r.start_time DESC
 	`
@@ -215,8 +229,11 @@ func GetUserRideHistory(pool *pgxpool.Pool, userID int) ([]map[string]interface{
 		var totalPrice float64
 		var endPhotoURL *string
 		var trackJSON []byte
+		var vehicleUUID, vehicleType, modelName string
+		var currentLat, currentLon float64
+		var batteryLevel int
 
-		if err := rows.Scan(&id, &vehicleID, &status, &startTime, &endTime, &totalPrice, &endPhotoURL, &trackJSON); err != nil {
+		if err := rows.Scan(&id, &vehicleID, &status, &startTime, &endTime, &totalPrice, &endPhotoURL, &trackJSON, &vehicleUUID, &currentLat, &currentLon, &batteryLevel, &vehicleType, &modelName); err != nil {
 			return nil, err
 		}
 
@@ -234,6 +251,12 @@ func GetUserRideHistory(pool *pgxpool.Pool, userID int) ([]map[string]interface{
 			"total_price":   totalPrice,
 			"end_photo_url": endPhotoURL,
 			"track":         track,
+			"vehicle_uuid":  vehicleUUID,
+			"current_lat":   currentLat,
+			"current_lon":   currentLon,
+			"battery_level": batteryLevel,
+			"vehicle_type":  vehicleType,
+			"model_name":    modelName,
 		})
 	}
 

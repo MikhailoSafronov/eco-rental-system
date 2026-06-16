@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -44,7 +45,17 @@ func GetAllRidesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 		SELECT 
 			r.id, r.user_id, u.email AS user_email, 
 			r.vehicle_id, v.uuid AS vehicle_uuid, 
-			r.status, r.start_time, r.end_time, r.total_price
+			r.status, r.start_time, r.end_time, r.total_price,
+			COALESCE(
+				(SELECT json_agg(
+					json_build_object(
+						'latitude', ST_Y(location::geometry),
+						'longitude', ST_X(location::geometry),
+						'timestamp', timestamp
+					) ORDER BY timestamp ASC
+				) FROM ride_telemetry rt WHERE rt.ride_id = r.id),
+				'[]'::json
+			) AS track
 		FROM rides r
 		JOIN users u ON r.user_id = u.id
 		JOIN vehicles v ON r.vehicle_id = v.id
@@ -63,10 +74,17 @@ func GetAllRidesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 		var startTime time.Time
 		var endTime *time.Time
 		var totalPrice float64
+		var trackJSON []byte
 
-		if err := rows.Scan(&id, &userID, &userEmail, &vehicleID, &vehicleUUID, &status, &startTime, &endTime, &totalPrice); err != nil {
+		if err := rows.Scan(&id, &userID, &userEmail, &vehicleID, &vehicleUUID, &status, &startTime, &endTime, &totalPrice, &trackJSON); err != nil {
 			return nil, err
 		}
+
+		var track []map[string]interface{}
+		if err := json.Unmarshal(trackJSON, &track); err != nil {
+			return nil, fmt.Errorf("помилка парсингу треку: %w", err)
+		}
+
 		rides = append(rides, map[string]interface{}{
 			"id":           id,
 			"user_id":      userID,
@@ -77,6 +95,7 @@ func GetAllRidesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 			"start_time":   startTime,
 			"end_time":     endTime,
 			"total_price":  totalPrice,
+			"track":        track,
 		})
 	}
 	return rides, nil
@@ -332,4 +351,38 @@ func ToggleUserBlock(pool *pgxpool.Pool, userID int, isBlocked bool) error {
 		return fmt.Errorf("помилка оновлення статусу користувача: %w", err)
 	}
 	return nil
+}
+
+// GetAdminStats повертає загальну статистику для дашборду
+func GetAdminStats(pool *pgxpool.Pool) (map[string]interface{}, error) {
+	ctx := context.Background()
+	var totalUsers, activeRides, totalVehicles int
+	var totalRevenue float64
+
+	// Загальна кількість клієнтів
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM users WHERE role = 'client' AND deleted_at IS NULL").Scan(&totalUsers); err != nil {
+		return nil, fmt.Errorf("помилка підрахунку користувачів: %w", err)
+	}
+
+	// Кількість активних поїздок
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM rides WHERE status = 'active'").Scan(&activeRides); err != nil {
+		return nil, fmt.Errorf("помилка підрахунку активних поїздок: %w", err)
+	}
+
+	// Загальний дохід (сума всіх успішних списань за поїздки)
+	if err := pool.QueryRow(ctx, "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE type = 'charge' AND status = 'succeeded'").Scan(&totalRevenue); err != nil {
+		return nil, fmt.Errorf("помилка підрахунку доходу: %w", err)
+	}
+
+	// Кількість транспорту в системі
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM vehicles WHERE deleted_at IS NULL").Scan(&totalVehicles); err != nil {
+		return nil, fmt.Errorf("помилка підрахунку транспорту: %w", err)
+	}
+
+	return map[string]interface{}{
+		"total_users":    totalUsers,
+		"active_rides":   activeRides,
+		"total_revenue":  totalRevenue,
+		"total_vehicles": totalVehicles,
+	}, nil
 }

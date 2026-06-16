@@ -389,3 +389,18 @@ func DeleteVehicleModel(pool *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"message": "Модель успішно видалено"})
 	}
 }
+
+// GetAdminStats повертає загальну статистику для дашборду
+func GetAdminStats(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		stats, err := database.GetAdminStats(pool)
+		if err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(stats)
+	}
+}

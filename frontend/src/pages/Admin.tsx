@@ -4,6 +4,7 @@ import { api } from '../api/axios';
 import { isAxiosError } from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { Navigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Polyline } from 'react-leaflet';
 
 // Описуємо структуру транспорту для адмінки
 interface AdminVehicle {
@@ -39,6 +40,7 @@ interface AdminRide {
   start_time: string;
   end_time?: string;
   total_price: number;
+  track?: { latitude: number; longitude: number; timestamp: string }[];
 }
 
 const vehicleTypeLabels: Record<string, string> = {
@@ -85,6 +87,9 @@ export default function Admin() {
   // Стани для моделей транспорту
   const [isAddModelModalOpen, setIsAddModelModalOpen] = useState(false);
   const [newModelData, setNewModelData] = useState({ name: '', vehicle_type: 'scooter', battery_capacity_wh: 500, max_speed: 25 });
+  
+  // Стан для перегляду деталей поїздки (маршруту)
+  const [selectedRide, setSelectedRide] = useState<AdminRide | null>(null);
 
   // Отримуємо ВСІ самокати (включно зі зламаними та орендованими)
   const { data: vehicles, isLoading, isError } = useQuery<AdminVehicle[]>({
@@ -137,6 +142,15 @@ export default function Admin() {
     queryFn: async () => {
       const res = await api.get('/admin/rides');
       return res.data || [];
+    }
+  });
+
+  // Отримуємо статистику для дашборду
+  const { data: stats } = useQuery<{total_users: number, active_rides: number, total_revenue: number, total_vehicles: number}>({
+    queryKey: ['admin', 'stats'],
+    queryFn: async () => {
+      const res = await api.get('/admin/stats');
+      return res.data;
     }
   });
 
@@ -371,6 +385,26 @@ export default function Admin() {
           >
             + Додати транспорт
           </button>
+        </div>
+      </div>
+
+      {/* Дашборд статистики */}
+      <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm flex flex-col justify-center">
+          <div className="text-sm font-medium text-gray-500">Загальний дохід</div>
+          <div className="mt-2 text-3xl font-extrabold text-green-600">{stats?.total_revenue?.toFixed(2) || '0.00'} ₴</div>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm flex flex-col justify-center">
+          <div className="text-sm font-medium text-gray-500">Активні поїздки</div>
+          <div className="mt-2 text-3xl font-extrabold text-blue-600">{stats?.active_rides || 0}</div>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm flex flex-col justify-center">
+          <div className="text-sm font-medium text-gray-500">Клієнтів у системі</div>
+          <div className="mt-2 text-3xl font-extrabold text-gray-800">{stats?.total_users || 0}</div>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm flex flex-col justify-center">
+          <div className="text-sm font-medium text-gray-500">Транспорту в парку</div>
+          <div className="mt-2 text-3xl font-extrabold text-gray-800">{stats?.total_vehicles || 0}</div>
         </div>
       </div>
 
@@ -641,7 +675,12 @@ export default function Admin() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {ridesData?.map((ride) => (
-              <tr key={ride.id} className="hover:bg-gray-50 transition">
+              <tr 
+                key={ride.id} 
+                className="hover:bg-gray-50 transition cursor-pointer" 
+                onClick={() => setSelectedRide(ride)}
+                title="Клікніть для перегляду маршруту на мапі"
+              >
                 <td className="px-6 py-4 font-bold text-gray-800">#{ride.id}</td>
                 <td className="px-6 py-4">
                   <div className="text-gray-800">{ride.user_email}</div>
@@ -954,6 +993,68 @@ export default function Admin() {
               </button>
               <button onClick={() => addModelMutation.mutate(newModelData)} disabled={addModelMutation.isPending || !newModelData.name.trim()} className="rounded-lg bg-gray-800 px-4 py-2 font-medium text-white transition hover:bg-gray-700 disabled:opacity-50">
                 {addModelMutation.isPending ? 'Створення...' : 'Створити'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальне вікно для перегляду маршруту поїздки */}
+      {selectedRide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-4xl rounded-xl bg-white p-6 shadow-xl flex flex-col h-[90vh]">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800">Маршрут поїздки #{selectedRide.id} 🗺️</h2>
+              <button onClick={() => setSelectedRide(null)} className="text-gray-500 hover:text-gray-800 text-2xl font-bold transition">✕</button>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-4 mb-4 text-sm bg-gray-50 p-4 rounded-lg border border-gray-100">
+              <div className="flex-1">
+                <span className="text-gray-500 block mb-1">Користувач</span>
+                <span className="font-bold text-gray-800">{selectedRide.user_email}</span>
+              </div>
+              <div className="flex-1">
+                <span className="text-gray-500 block mb-1">Транспорт</span>
+                <span className="font-bold text-gray-800">#{selectedRide.vehicle_id} ({selectedRide.vehicle_uuid.split('-')[0]}...)</span>
+              </div>
+              <div className="flex-1">
+                <span className="text-gray-500 block mb-1">Статус</span>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${selectedRide.status === 'completed' ? 'bg-green-100 text-green-800' : selectedRide.status === 'active' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                  {selectedRide.status === 'completed' ? 'Завершена' : selectedRide.status === 'active' ? 'Активна' : selectedRide.status}
+                </span>
+              </div>
+              <div className="flex-1">
+                <span className="text-gray-500 block mb-1">Сума</span>
+                <span className="font-bold text-gray-800">{Number(selectedRide.total_price).toFixed(2)} ₴</span>
+              </div>
+            </div>
+
+            <div className="relative flex-1 mb-4 rounded-lg overflow-hidden border border-gray-300">
+              {selectedRide.track && selectedRide.track.length > 0 ? (
+                <MapContainer 
+                  center={[selectedRide.track[0].latitude, selectedRide.track[0].longitude]} 
+                  zoom={15} 
+                  style={{ height: '100%', width: '100%' }}
+                >
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <Polyline 
+                    positions={selectedRide.track.map(t => [t.latitude, t.longitude])} 
+                    color="#16a34a" 
+                    weight={4}
+                    dashArray="10, 10"
+                  />
+                </MapContainer>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center bg-gray-50 text-gray-500">
+                  <span className="text-4xl mb-2">📡</span>
+                  <span className="font-medium">Немає GPS-даних (телеметрії) для цієї поїздки</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 shrink-0">
+              <button onClick={() => setSelectedRide(null)} className="rounded-lg bg-gray-800 px-6 py-2 font-bold text-white transition hover:bg-gray-700">
+                Закрити
               </button>
             </div>
           </div>
