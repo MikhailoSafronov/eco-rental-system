@@ -53,9 +53,10 @@ INSERT INTO vehicles (model_id, tariff_id, location, battery_level, status) VALU
 (7, 8, ST_SetSRID(ST_MakePoint(32.625000, 46.662000), 4326), 20, 'low_battery');
 
 -- 5. Додаємо користувачів (Пароль: password123)
-INSERT INTO users (name, email, phone, password_hash, role, balance) VALUES
-('Адміністратор Системи', 'admin@example.com', '+380991112233', '$2a$10$5GWM0md73Y1cxH8L1K095epnSGewA7SSN2PeRNv7BFbn6SsULtdDG', 'admin', 0.00),
-('Демо Користувач', 'demo@example.com', '+380991234567', '$2a$10$5GWM0md73Y1cxH8L1K095epnSGewA7SSN2PeRNv7BFbn6SsULtdDG', 'client', 500.00);
+INSERT INTO users (name, email, phone, password_hash, role, balance, is_blocked) VALUES
+('Адміністратор Системи', 'admin@example.com', '+380991112233', '$2a$10$5GWM0md73Y1cxH8L1K095epnSGewA7SSN2PeRNv7BFbn6SsULtdDG', 'admin', 0.00, false),
+('Демо Користувач', 'demo@example.com', '+380991234567', '$2a$10$5GWM0md73Y1cxH8L1K095epnSGewA7SSN2PeRNv7BFbn6SsULtdDG', 'client', 500.00, false),
+('Заблокований Юзер', 'blocked@example.com', '+380990001122', '$2a$10$5GWM0md73Y1cxH8L1K095epnSGewA7SSN2PeRNv7BFbn6SsULtdDG', 'client', 10.00, true);
 
 -- 6. Додаємо історію поїздок для Демо Користувача
 INSERT INTO rides (user_id, vehicle_id, status, start_time, end_time, start_location, end_location, total_price) VALUES 
