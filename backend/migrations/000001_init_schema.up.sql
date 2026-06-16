@@ -171,7 +171,7 @@ INSERT INTO vehicles (model_id, tariff_id, location, battery_level, status) VALU
 (2, 2, ST_SetSRID(ST_MakePoint(32.611100, 46.631500), 4326), 12, 'maintenance'),
 
 -- Велосипед: Готовий до оренди (Парк Слави)
-(3, 1, ST_SetSRID(ST_MakePoint(32.632000, 46.635000), 4326), 100, 'available'),
+(3, 1, ST_SetSRID(ST_MakePoint(32.615000, 46.635000), 4326), 100, 'available'),
 
 -- Мопед: Готовий до оренди (Залізничний вокзал)
 (4, 2, ST_SetSRID(ST_MakePoint(32.605000, 46.645000), 4326), 100, 'available');

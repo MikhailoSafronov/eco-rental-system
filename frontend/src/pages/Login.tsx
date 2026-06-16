@@ -23,7 +23,7 @@ export default function Login() {
       // Якщо успіх - зберігаємо токен і перекидаємо на головну
       setAuth(response.data.token, {
         id: response.data.user_id,
-        name: '', email: '', role: 'client', balance: 0 // Деталі профілю завантажимо пізніше
+        name: '', email: '', role: response.data.role || 'client', balance: 0 // Отримуємо реальну роль з бекенду
       })
       navigate('/')
       

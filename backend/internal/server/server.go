@@ -40,6 +40,7 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		// Користувач та фінанси
 		r.Get("/api/users/me", handlers.GetProfile(dbPool))
 		r.Post("/api/users/topup", handlers.TopUpBalance(dbPool))
+		r.Get("/api/users/payments", handlers.GetPaymentHistory(dbPool))
 
 		// Поїздки
 		r.Post("/api/rides/start", handlers.StartRide(dbPool))

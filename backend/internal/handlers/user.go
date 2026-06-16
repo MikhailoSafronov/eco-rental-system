@@ -77,6 +77,7 @@ func LoginUser(pool *pgxpool.Pool) http.HandlerFunc {
 			"message": "Успішний вхід",
 			"user_id": user.ID,
 			"token":   tokenString, // Віддаємо токен клієнту
+			"role":    user.Role,   // Віддаємо роль для перевірки доступу на фронтенді
 		})
 	}
 }
