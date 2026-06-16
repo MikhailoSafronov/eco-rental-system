@@ -41,12 +41,14 @@ func UpdateVehicleStatus(pool *pgxpool.Pool, vehicleID int, newStatus string) er
 func GetAllVehiclesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 	query := `
 		SELECT 
-			id, uuid, battery_level, status,
-			ST_Y(location::geometry) AS latitude,
-			ST_X(location::geometry) AS longitude
-		FROM vehicles
-		WHERE deleted_at IS NULL
-		ORDER BY id ASC
+			v.id, v.uuid, v.battery_level, v.status,
+			ST_Y(v.location::geometry) AS latitude,
+			ST_X(v.location::geometry) AS longitude,
+			m.name AS model_name
+		FROM vehicles v
+		LEFT JOIN vehicle_models m ON v.model_id = m.id
+		WHERE v.deleted_at IS NULL
+		ORDER BY v.id ASC
 	`
 	rows, err := pool.Query(context.Background(), query)
 	if err != nil {
@@ -60,9 +62,15 @@ func GetAllVehiclesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 		var id, battery int
 		var uuid, status string
 		var lat, lon float64
+		var modelName *string
 
-		if err := rows.Scan(&id, &uuid, &battery, &status, &lat, &lon); err != nil {
+		if err := rows.Scan(&id, &uuid, &battery, &status, &lat, &lon, &modelName); err != nil {
 			return nil, fmt.Errorf("помилка сканування рядка: %w", err)
+		}
+
+		mName := "Невідомо"
+		if modelName != nil {
+			mName = *modelName
 		}
 
 		vehicles = append(vehicles, map[string]interface{}{
@@ -72,6 +80,7 @@ func GetAllVehiclesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 			"status":        status,
 			"latitude":      lat,
 			"longitude":     lon,
+			"model_name":    mName,
 		})
 	}
 	if err := rows.Err(); err != nil {

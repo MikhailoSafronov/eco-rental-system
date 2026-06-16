@@ -21,6 +21,11 @@ export const Layout = () => {
         <div className="flex items-center gap-4">
           {/* Показуємо email або ім'я користувача, якщо вони є */}
           {user && <span className="text-sm font-normal">Привіт, {user.email}!</span>}
+          {user?.role === 'admin' && (
+            <Link to="/admin" className="rounded border border-gray-600 bg-gray-800 px-3 py-1 text-sm font-medium transition hover:bg-gray-700">
+              Адмін-панель
+            </Link>
+          )}
           <Link to="/profile" className="rounded bg-green-500 px-3 py-1 text-sm font-medium transition hover:bg-green-400">
             Мій профіль
           </Link>

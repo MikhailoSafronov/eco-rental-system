@@ -5,6 +5,7 @@ import Home from './pages/Home'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
 import Profile from './pages/Profile'
+import Admin from './pages/Admin'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<div className="p-8 text-center text-red-500">404 - Сторінку не знайдено 😢</div>} />
           </Route>
         </Route>
