@@ -2,7 +2,9 @@ package server
 
 import (
 	"net/http"
+	"time"
 
+	"eco-rental/internal/database"
 	"eco-rental/internal/handlers"
 	"eco-rental/internal/middleware"
 
@@ -12,6 +14,14 @@ import (
 
 func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 	r := chi.NewRouter()
+
+	// Запускаємо фоновий процес (Worker) для автоматичного завершення поїздок при нестачі балансу
+	go func() {
+		for {
+			time.Sleep(1 * time.Minute)
+			database.AutoEndRides(dbPool)
+		}
+	}()
 
 	// 1. Публічні маршрути (доступні всім)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
