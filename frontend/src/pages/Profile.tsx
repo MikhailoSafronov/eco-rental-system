@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/axios';
 import { isAxiosError } from 'axios';
+import { MapContainer, TileLayer, Polyline } from 'react-leaflet';
 
 // Описуємо структуру поїздки, яку очікуємо від бекенда
 interface Ride {
@@ -87,6 +88,17 @@ export default function Profile() {
   return (
     <div className="mx-auto max-w-4xl p-6">
       <h1 className="mb-6 text-3xl font-bold text-gray-800">Мій профіль 👤</h1>
+
+      {/* Банер про блокування */}
+      {user?.is_blocked && (
+        <div className="mb-8 flex items-start gap-4 rounded-xl border-l-4 border-red-500 bg-red-50 p-5 shadow-sm">
+          <span className="text-3xl">⚠️</span>
+          <div>
+            <h2 className="text-lg font-bold text-red-800">Ваш акаунт заблоковано</h2>
+            <p className="mt-1 text-sm text-red-700">Ви порушили правила сервісу. Оренда нового транспорту тимчасово недоступна. Зверніться до служби підтримки для з'ясування обставин.</p>
+          </div>
+        </div>
+      )}
 
       {/* Картка балансу */}
       <div className="mb-8 flex flex-col justify-between items-center rounded-xl bg-white p-6 shadow-md border-l-4 border-green-500 sm:flex-row gap-4">
@@ -279,6 +291,31 @@ export default function Profile() {
                   <span className="font-bold text-blue-600">{selectedRide.track.length} GPS точок</span>
                 </div>
               )}
+
+              {/* Міні-карта з маршрутом */}
+              <div className="relative mt-2 h-64 w-full rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                {selectedRide.track && selectedRide.track.length > 0 ? (
+                  <MapContainer 
+                    center={[selectedRide.track[0].latitude, selectedRide.track[0].longitude]} 
+                    zoom={15} 
+                    style={{ height: '100%', width: '100%' }}
+                  >
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <Polyline 
+                      positions={selectedRide.track.map(t => [t.latitude, t.longitude])} 
+                      color="#16a34a" 
+                      weight={4}
+                      dashArray="10, 10"
+                    />
+                  </MapContainer>
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center bg-gray-50 text-gray-500">
+                    <span className="text-4xl mb-2">📡</span>
+                    <span className="font-medium text-center px-4">Немає GPS-даних (телеметрії)<br/>для цієї поїздки</span>
+                  </div>
+                )}
+              </div>
+
               {selectedRide.end_photo_url && (
                 <div className="mt-2">
                   <span className="block mb-2 font-medium text-gray-700">Фотографія паркування:</span>

@@ -4,6 +4,7 @@ import { api } from '../api/axios';
 import { isAxiosError } from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { Navigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Polyline } from 'react-leaflet';
 
 // Описуємо структуру транспорту для адмінки
 interface AdminVehicle {
@@ -15,6 +16,31 @@ interface AdminVehicle {
   status: string;
   latitude: number;
   longitude: number;
+}
+
+// Описуємо структуру користувача
+interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  balance: number;
+  is_blocked: boolean;
+}
+
+// Описуємо структуру поїздки для адмінки
+interface AdminRide {
+  id: number;
+  user_id: number;
+  user_email: string;
+  vehicle_id: number;
+  vehicle_uuid: string;
+  status: string;
+  start_time: string;
+  end_time?: string;
+  total_price: number;
+  track?: { latitude: number; longitude: number; timestamp: string }[];
 }
 
 const vehicleTypeLabels: Record<string, string> = {
@@ -58,6 +84,13 @@ export default function Admin() {
   const [isAddTariffModalOpen, setIsAddTariffModalOpen] = useState(false);
   const [newTariffData, setNewTariffData] = useState({ name: '', vehicle_type: 'scooter', unlock_price: 15, minute_price: 3.5 });
 
+  // Стани для моделей транспорту
+  const [isAddModelModalOpen, setIsAddModelModalOpen] = useState(false);
+  const [newModelData, setNewModelData] = useState({ name: '', vehicle_type: 'scooter', battery_capacity_wh: 500, max_speed: 25 });
+  
+  // Стан для перегляду деталей поїздки (маршруту)
+  const [selectedRide, setSelectedRide] = useState<AdminRide | null>(null);
+
   // Отримуємо ВСІ самокати (включно зі зламаними та орендованими)
   const { data: vehicles, isLoading, isError } = useQuery<AdminVehicle[]>({
     queryKey: ['admin', 'vehicles'],
@@ -68,7 +101,7 @@ export default function Admin() {
   });
 
   // Отримуємо список всіх моделей
-  const { data: models } = useQuery<{id: number, name: string, type: string}[]>({
+  const { data: models } = useQuery<{id: number, name: string, type: string, battery_capacity_wh: number, max_speed: number}[]>({
     queryKey: ['admin', 'models'],
     queryFn: async () => {
       const res = await api.get('/admin/models');
@@ -91,6 +124,33 @@ export default function Admin() {
     queryFn: async () => {
       const res = await api.get('/zones');
       return res.data?.zones || res.data || [];
+    }
+  });
+
+  // Отримуємо всіх користувачів
+  const { data: usersData } = useQuery<AdminUser[]>({
+    queryKey: ['admin', 'users'],
+    queryFn: async () => {
+      const res = await api.get('/admin/users');
+      return res.data || [];
+    }
+  });
+
+  // Отримуємо всі поїздки
+  const { data: ridesData } = useQuery<AdminRide[]>({
+    queryKey: ['admin', 'rides'],
+    queryFn: async () => {
+      const res = await api.get('/admin/rides');
+      return res.data || [];
+    }
+  });
+
+  // Отримуємо статистику для дашборду
+  const { data: stats } = useQuery<{total_users: number, active_rides: number, total_revenue: number, total_vehicles: number}>({
+    queryKey: ['admin', 'stats'],
+    queryFn: async () => {
+      const res = await api.get('/admin/stats');
+      return res.data;
     }
   });
 
@@ -252,6 +312,54 @@ export default function Admin() {
     }
   });
 
+  // Мутація для блокування/розблокування користувача
+  const toggleUserBlockMutation = useMutation({
+    mutationFn: async ({ id, is_blocked }: { id: number; is_blocked: boolean }) => {
+      const res = await api.patch(`/admin/users/${id}/block`, { is_blocked });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка зміни статусу користувача:\n${message}`);
+    }
+  });
+
+  // Мутація для створення моделі
+  const addModelMutation = useMutation({
+    mutationFn: async (data: typeof newModelData) => {
+      const res = await api.post('/admin/models', data);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'models'] });
+      setIsAddModelModalOpen(false);
+      setNewModelData({ name: '', vehicle_type: 'scooter', battery_capacity_wh: 500, max_speed: 25 });
+      alert('Нову модель успішно створено! ⚙️');
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка додавання моделі:\n${message}`);
+    }
+  });
+
+  // Мутація для видалення моделі
+  const deleteModelMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.delete(`/admin/models/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'models'] });
+    },
+    onError: (error: Error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
+      alert(`Помилка видалення моделі:\n${message}`);
+    }
+  });
+
   // Перевірка ролі (захист на рівні фронтенду) ПОВИННА БУТИ ПІСЛЯ ВСІХ ХУКІВ
   if (user?.role !== 'admin') {
     return <Navigate to="/" replace />;
@@ -277,6 +385,26 @@ export default function Admin() {
           >
             + Додати транспорт
           </button>
+        </div>
+      </div>
+
+      {/* Дашборд статистики */}
+      <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm flex flex-col justify-center">
+          <div className="text-sm font-medium text-gray-500">Загальний дохід</div>
+          <div className="mt-2 text-3xl font-extrabold text-green-600">{stats?.total_revenue?.toFixed(2) || '0.00'} ₴</div>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm flex flex-col justify-center">
+          <div className="text-sm font-medium text-gray-500">Активні поїздки</div>
+          <div className="mt-2 text-3xl font-extrabold text-blue-600">{stats?.active_rides || 0}</div>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm flex flex-col justify-center">
+          <div className="text-sm font-medium text-gray-500">Клієнтів у системі</div>
+          <div className="mt-2 text-3xl font-extrabold text-gray-800">{stats?.total_users || 0}</div>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm flex flex-col justify-center">
+          <div className="text-sm font-medium text-gray-500">Транспорту в парку</div>
+          <div className="mt-2 text-3xl font-extrabold text-gray-800">{stats?.total_vehicles || 0}</div>
         </div>
       </div>
 
@@ -376,6 +504,50 @@ export default function Admin() {
       </div>
 
       <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Управління моделями ⚙️</h2>
+        <button 
+          onClick={() => setIsAddModelModalOpen(true)}
+          className="rounded-xl bg-gray-800 px-4 py-2 text-sm text-white font-bold transition hover:bg-gray-700 shadow-md"
+        >
+          + Додати модель
+        </button>
+      </div>
+      
+      <div className="overflow-hidden rounded-xl bg-white shadow-md mb-12">
+        <table className="w-full text-left text-sm text-gray-600">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-700 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Назва моделі</th>
+              <th className="px-6 py-4">Вид транспорту</th>
+              <th className="px-6 py-4">Батарея (Вт·год)</th>
+              <th className="px-6 py-4">Швидкість (км/год)</th>
+              <th className="px-6 py-4 text-right">Дії</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {models?.map((model) => (
+              <tr key={model.id} className="hover:bg-gray-50 transition">
+                <td className="px-6 py-4 font-bold text-gray-800">#{model.id}</td>
+                <td className="px-6 py-4 font-medium text-gray-800">{model.name}</td>
+                <td className="px-6 py-4">{vehicleTypeLabels[model.type] || model.type}</td>
+                <td className="px-6 py-4">{model.battery_capacity_wh}</td>
+                <td className="px-6 py-4">{model.max_speed}</td>
+                <td className="px-6 py-4 text-right">
+                  <button 
+                    onClick={() => { if (window.confirm(`Видалити модель "${model.name}"?`)) deleteModelMutation.mutate(model.id); }}
+                    className="text-red-500 hover:text-red-700 font-bold transition"
+                  >
+                    Видалити
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-12 mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-extrabold text-gray-800">Управління тарифами 💰</h2>
         <button 
           onClick={() => setIsAddTariffModalOpen(true)}
@@ -423,6 +595,122 @@ export default function Admin() {
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Керування користувачами 👥</h2>
+      </div>
+      
+      <div className="overflow-hidden rounded-xl bg-white shadow-md mb-12">
+        <table className="w-full text-left text-sm text-gray-600">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-700 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Користувач</th>
+              <th className="px-6 py-4">Контакти</th>
+              <th className="px-6 py-4">Баланс</th>
+              <th className="px-6 py-4">Статус</th>
+              <th className="px-6 py-4 text-right">Дії</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {usersData?.map((u) => (
+              <tr key={u.id} className="hover:bg-gray-50 transition">
+                <td className="px-6 py-4 font-bold text-gray-800">#{u.id}</td>
+                <td className="px-6 py-4">
+                  <div className="font-bold text-gray-800">{u.name}</div>
+                  <div className="text-xs text-gray-500 uppercase">{u.role}</div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-gray-800">{u.email}</div>
+                  <div className="text-gray-500">{u.phone}</div>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`font-bold ${u.balance < 0 ? 'text-red-500' : 'text-green-600'}`}>{u.balance.toFixed(2)} ₴</span>
+                </td>
+                <td className="px-6 py-4">
+                  {u.is_blocked ? (
+                    <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">Заблокований</span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Активний</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 text-right">
+                  {u.role !== 'admin' && (
+                    <button 
+                      onClick={() => {
+                        if (window.confirm(`Ви впевнені, що хочете ${u.is_blocked ? 'РОЗБЛОКУВАТИ' : 'ЗАБЛОКУВАТИ'} користувача ${u.name}?`)) {
+                          toggleUserBlockMutation.mutate({ id: u.id, is_blocked: !u.is_blocked });
+                        }
+                      }}
+                      disabled={toggleUserBlockMutation.isPending}
+                      className={`font-bold transition disabled:opacity-50 ${u.is_blocked ? 'text-green-600 hover:text-green-800' : 'text-red-500 hover:text-red-700'}`}
+                    >
+                      {u.is_blocked ? 'Розблокувати' : 'Заблокувати'}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Історія всіх поїздок 🗺️</h2>
+      </div>
+      
+      <div className="overflow-hidden rounded-xl bg-white shadow-md mb-12">
+        <table className="w-full text-left text-sm text-gray-600">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-700 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-4">ID</th>
+              <th className="px-6 py-4">Користувач</th>
+              <th className="px-6 py-4">Транспорт</th>
+              <th className="px-6 py-4">Статус / Час</th>
+              <th className="px-6 py-4 text-right">Сума (₴)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {ridesData?.map((ride) => (
+              <tr 
+                key={ride.id} 
+                className="hover:bg-gray-50 transition cursor-pointer" 
+                onClick={() => setSelectedRide(ride)}
+                title="Клікніть для перегляду маршруту на мапі"
+              >
+                <td className="px-6 py-4 font-bold text-gray-800">#{ride.id}</td>
+                <td className="px-6 py-4">
+                  <div className="text-gray-800">{ride.user_email}</div>
+                  <div className="text-xs text-gray-500">ID: {ride.user_id}</div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="font-medium text-gray-800">#{ride.vehicle_id}</div>
+                  <div className="text-xs text-gray-400 font-mono">{ride.vehicle_uuid.split('-')[0]}...</div>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ride.status === 'completed' ? 'bg-green-100 text-green-800' : ride.status === 'active' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                    {ride.status === 'completed' ? 'Завершена' : ride.status === 'active' ? 'Активна' : ride.status}
+                  </span>
+                  <div className="mt-1 text-xs text-gray-500">
+                    Початок: {new Date(ride.start_time).toLocaleString('uk-UA')}
+                  </div>
+                  {ride.end_time && (
+                    <div className="text-xs text-gray-500">
+                      Кінець: {new Date(ride.end_time).toLocaleString('uk-UA')}
+                    </div>
+                  )}
+                </td>
+                <td className="px-6 py-4 text-right font-bold text-gray-800">
+                  {Number(ride.total_price).toFixed(2)} ₴
+                </td>
+              </tr>
+            ))}
+            {(!ridesData || ridesData.length === 0) && (
+              <tr><td colSpan={5} className="px-6 py-4 text-center">Немає поїздок у системі</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -656,6 +944,117 @@ export default function Admin() {
                 className="rounded-lg bg-green-600 px-4 py-2 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
               >
                 {addTariffMutation.isPending ? 'Створення...' : 'Створити'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальне вікно для створення нової моделі */}
+      {isAddModelModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold text-gray-800">Створити нову модель ⚙️</h2>
+            
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Назва моделі</label>
+                <input type="text" value={newModelData.name} onChange={e => setNewModelData({...newModelData, name: e.target.value})} placeholder="Наприклад: Ninebot Max" className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-gray-800 transition" />
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Вид транспорту</label>
+                <select 
+                  value={newModelData.vehicle_type} 
+                  onChange={e => setNewModelData({...newModelData, vehicle_type: e.target.value})} 
+                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-800 transition"
+                >
+                  <option value="scooter">🛴 Самокат</option>
+                  <option value="bike">🚲 Велосипед</option>
+                  <option value="moped">🛵 Мопед</option>
+                  <option value="monowheel">🛞 Моноколесо</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Ємність батареї (Вт·год)</label>
+                <input type="number" min="0" value={newModelData.battery_capacity_wh} onChange={e => setNewModelData({...newModelData, battery_capacity_wh: parseInt(e.target.value) || 0})} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-gray-800 transition" />
+              </div>
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Макс. швидкість (км/год)</label>
+                <input type="number" min="0" value={newModelData.max_speed} onChange={e => setNewModelData({...newModelData, max_speed: parseInt(e.target.value) || 0})} className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-gray-800 transition" />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button onClick={() => setIsAddModelModalOpen(false)} className="rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-700 transition hover:bg-gray-300">
+                Скасувати
+              </button>
+              <button onClick={() => addModelMutation.mutate(newModelData)} disabled={addModelMutation.isPending || !newModelData.name.trim()} className="rounded-lg bg-gray-800 px-4 py-2 font-medium text-white transition hover:bg-gray-700 disabled:opacity-50">
+                {addModelMutation.isPending ? 'Створення...' : 'Створити'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальне вікно для перегляду маршруту поїздки */}
+      {selectedRide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-4xl rounded-xl bg-white p-6 shadow-xl flex flex-col h-[90vh]">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800">Маршрут поїздки #{selectedRide.id} 🗺️</h2>
+              <button onClick={() => setSelectedRide(null)} className="text-gray-500 hover:text-gray-800 text-2xl font-bold transition">✕</button>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-4 mb-4 text-sm bg-gray-50 p-4 rounded-lg border border-gray-100">
+              <div className="flex-1">
+                <span className="text-gray-500 block mb-1">Користувач</span>
+                <span className="font-bold text-gray-800">{selectedRide.user_email}</span>
+              </div>
+              <div className="flex-1">
+                <span className="text-gray-500 block mb-1">Транспорт</span>
+                <span className="font-bold text-gray-800">#{selectedRide.vehicle_id} ({selectedRide.vehicle_uuid.split('-')[0]}...)</span>
+              </div>
+              <div className="flex-1">
+                <span className="text-gray-500 block mb-1">Статус</span>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${selectedRide.status === 'completed' ? 'bg-green-100 text-green-800' : selectedRide.status === 'active' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                  {selectedRide.status === 'completed' ? 'Завершена' : selectedRide.status === 'active' ? 'Активна' : selectedRide.status}
+                </span>
+              </div>
+              <div className="flex-1">
+                <span className="text-gray-500 block mb-1">Сума</span>
+                <span className="font-bold text-gray-800">{Number(selectedRide.total_price).toFixed(2)} ₴</span>
+              </div>
+            </div>
+
+            <div className="relative flex-1 mb-4 rounded-lg overflow-hidden border border-gray-300">
+              {selectedRide.track && selectedRide.track.length > 0 ? (
+                <MapContainer 
+                  center={[selectedRide.track[0].latitude, selectedRide.track[0].longitude]} 
+                  zoom={15} 
+                  style={{ height: '100%', width: '100%' }}
+                >
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <Polyline 
+                    positions={selectedRide.track.map(t => [t.latitude, t.longitude])} 
+                    color="#16a34a" 
+                    weight={4}
+                    dashArray="10, 10"
+                  />
+                </MapContainer>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center bg-gray-50 text-gray-500">
+                  <span className="text-4xl mb-2">📡</span>
+                  <span className="font-medium">Немає GPS-даних (телеметрії) для цієї поїздки</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 shrink-0">
+              <button onClick={() => setSelectedRide(null)} className="rounded-lg bg-gray-800 px-6 py-2 font-bold text-white transition hover:bg-gray-700">
+                Закрити
               </button>
             </div>
           </div>

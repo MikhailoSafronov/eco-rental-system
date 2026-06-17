@@ -22,9 +22,13 @@ func StartRide(pool *pgxpool.Pool, userID int, vehicleID int) (*models.Ride, err
 	defer tx.Rollback(ctx)
 
 	var balance float64
-	err = tx.QueryRow(ctx, "SELECT balance FROM users WHERE id = $1 AND deleted_at IS NULL", userID).Scan(&balance)
+	var isBlocked bool
+	err = tx.QueryRow(ctx, "SELECT balance, is_blocked FROM users WHERE id = $1 AND deleted_at IS NULL", userID).Scan(&balance, &isBlocked)
 	if err != nil {
-		return nil, fmt.Errorf("помилка перевірки балансу: %w", err)
+		return nil, fmt.Errorf("помилка перевірки користувача: %w", err)
+	}
+	if isBlocked {
+		return nil, fmt.Errorf("ваш акаунт заблоковано за порушення правил. Зверніться до підтримки")
 	}
 	if balance < 50.00 {
 		return nil, fmt.Errorf("недостатньо коштів на балансі (мінімум 50.00 грн)")
@@ -68,6 +72,12 @@ func StartRide(pool *pgxpool.Pool, userID int, vehicleID int) (*models.Ride, err
 	err = tx.QueryRow(ctx, queryRide, userID, vehicleID).Scan(&ride.ID, &ride.StartTime)
 	if err != nil {
 		return nil, fmt.Errorf("не вдалося створити поїздку: %w", err)
+	}
+
+	// Записуємо стартову координату в таблицю телеметрії одразу під час початку поїздки.
+	// Це потрібно, щоб лінія маршруту мала початкову точку для з'єднання при першому ж русі (симуляції).
+	if _, err := tx.Exec(ctx, "INSERT INTO ride_telemetry (ride_id, location) VALUES ($1, (SELECT location FROM vehicles WHERE id = $2))", ride.ID, vehicleID); err != nil {
+		return nil, fmt.Errorf("помилка збереження початкової телеметрії: %w", err)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
@@ -177,6 +187,76 @@ func EndRide(pool *pgxpool.Pool, userID int, photoURL string) (*models.Ride, err
 	return ride, nil
 }
 
+// AutoEndRides - фоновий процес, який перевіряє активні поїздки і завершує ті, яким не вистачає балансу
+func AutoEndRides(pool *pgxpool.Pool) {
+	ctx := context.Background()
+	query := `
+		SELECT r.id, r.user_id, r.vehicle_id, r.start_time, t.unlock_price, t.minute_price, u.balance
+		FROM rides r
+		JOIN vehicles v ON r.vehicle_id = v.id
+		JOIN tariffs t ON v.tariff_id = t.id
+		JOIN users u ON r.user_id = u.id
+		WHERE r.status = 'active'
+	`
+	rows, err := pool.Query(ctx, query)
+	if err != nil {
+		fmt.Println("Помилка фонового процесу AutoEndRides:", err)
+		return
+	}
+
+	type rideData struct {
+		RideID      int
+		UserID      int
+		VehicleID   int
+		StartTime   time.Time
+		UnlockPrice float64
+		MinutePrice float64
+		Balance     float64
+	}
+
+	var ridesToAutoEnd []rideData
+	for rows.Next() {
+		var r rideData
+		if err := rows.Scan(&r.RideID, &r.UserID, &r.VehicleID, &r.StartTime, &r.UnlockPrice, &r.MinutePrice, &r.Balance); err == nil {
+			ridesToAutoEnd = append(ridesToAutoEnd, r)
+		}
+	}
+	rows.Close()
+
+	for _, r := range ridesToAutoEnd {
+		minutes := math.Ceil(time.Since(r.StartTime).Minutes())
+		if minutes < 1 {
+			minutes = 1
+		}
+
+		currentCost := r.UnlockPrice + (minutes * r.MinutePrice)
+		nextMinuteCost := currentCost + r.MinutePrice
+
+		// Якщо балансу не вистачить на наступну хвилину - завершуємо зараз
+		if r.Balance < nextMinuteCost {
+			tx, err := pool.Begin(ctx)
+			if err != nil {
+				continue
+			}
+
+			// Блокуємо рядок поїздки від паралельних змін (захист від подвійного списання)
+			var status string
+			if err := tx.QueryRow(ctx, "SELECT status FROM rides WHERE id = $1 FOR UPDATE", r.RideID).Scan(&status); err != nil || status != "active" {
+				tx.Rollback(ctx)
+				continue
+			}
+
+			tx.Exec(ctx, "UPDATE users SET balance = balance - $1 WHERE id = $2", currentCost, r.UserID)
+			tx.Exec(ctx, "INSERT INTO payments (ride_id, user_id, amount, type, status) VALUES ($1, $2, $3, 'charge', 'succeeded')", r.RideID, r.UserID, currentCost)
+			tx.Exec(ctx, "UPDATE vehicles SET status = 'available', updated_at = NOW() WHERE id = $1", r.VehicleID)
+			tx.Exec(ctx, "UPDATE rides SET status = 'completed', end_time = NOW(), total_price = $1, end_photo_url = NULL WHERE id = $2", currentCost, r.RideID)
+
+			tx.Commit(ctx)
+			fmt.Printf("🔄 Фоновий процес: Поїздку #%d автоматично завершено (Баланс вичерпано. Користувач: %d)\n", r.RideID, r.UserID)
+		}
+	}
+}
+
 // GetUserRideHistory повертає історію поїздок користувача
 func GetUserRideHistory(pool *pgxpool.Pool, userID int) ([]map[string]interface{}, error) {
 	query := `
@@ -191,8 +271,16 @@ func GetUserRideHistory(pool *pgxpool.Pool, userID int) ([]map[string]interface{
 					) ORDER BY timestamp ASC
 				) FROM ride_telemetry rt WHERE rt.ride_id = r.id),
 				'[]'::json
-			) AS track
+			) AS track,
+			v.uuid AS vehicle_uuid,
+			ST_Y(v.location::geometry) AS current_lat,
+			ST_X(v.location::geometry) AS current_lon,
+			v.battery_level,
+			m.type AS vehicle_type,
+			m.name AS model_name
 		FROM rides r
+		JOIN vehicles v ON r.vehicle_id = v.id
+		JOIN vehicle_models m ON v.model_id = m.id
 		WHERE r.user_id = $1
 		ORDER BY r.start_time DESC
 	`
@@ -211,8 +299,11 @@ func GetUserRideHistory(pool *pgxpool.Pool, userID int) ([]map[string]interface{
 		var totalPrice float64
 		var endPhotoURL *string
 		var trackJSON []byte
+		var vehicleUUID, vehicleType, modelName string
+		var currentLat, currentLon float64
+		var batteryLevel int
 
-		if err := rows.Scan(&id, &vehicleID, &status, &startTime, &endTime, &totalPrice, &endPhotoURL, &trackJSON); err != nil {
+		if err := rows.Scan(&id, &vehicleID, &status, &startTime, &endTime, &totalPrice, &endPhotoURL, &trackJSON, &vehicleUUID, &currentLat, &currentLon, &batteryLevel, &vehicleType, &modelName); err != nil {
 			return nil, err
 		}
 
@@ -230,6 +321,12 @@ func GetUserRideHistory(pool *pgxpool.Pool, userID int) ([]map[string]interface{
 			"total_price":   totalPrice,
 			"end_photo_url": endPhotoURL,
 			"track":         track,
+			"vehicle_uuid":  vehicleUUID,
+			"current_lat":   currentLat,
+			"current_lon":   currentLon,
+			"battery_level": batteryLevel,
+			"vehicle_type":  vehicleType,
+			"model_name":    modelName,
 		})
 	}
 

@@ -282,3 +282,125 @@ func DeleteTariff(pool *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"message": "Тариф успішно видалено"})
 	}
 }
+
+// GetAllUsersAdmin повертає список усіх користувачів
+func GetAllUsersAdmin(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		users, err := database.GetAllUsersAdmin(pool)
+		if err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(users)
+	}
+}
+
+// ToggleUserBlock блокує або розблоковує користувача
+func ToggleUserBlock(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID користувача")
+			return
+		}
+
+		var req struct {
+			IsBlocked bool `json:"is_blocked"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Невалідний JSON")
+			return
+		}
+
+		if err := database.ToggleUserBlock(pool, id, req.IsBlocked); err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Статус користувача оновлено"})
+	}
+}
+
+// GetAllRidesAdmin повертає всі поїздки системи для адмін-панелі
+func GetAllRidesAdmin(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rides, err := database.GetAllRidesAdmin(pool)
+		if err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(rides)
+	}
+}
+
+// AddVehicleModel обробляє створення нової моделі транспорту
+func AddVehicleModel(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name            string `json:"name"`
+			VehicleType     string `json:"vehicle_type"`
+			BatteryCapacity int    `json:"battery_capacity_wh"`
+			MaxSpeed        int    `json:"max_speed"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Невалідний JSON")
+			return
+		}
+
+		id, err := database.AddVehicleModel(pool, req.Name, req.VehicleType, req.BatteryCapacity, req.MaxSpeed)
+		if err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Модель успішно додано",
+			"id":      id,
+		})
+	}
+}
+
+// DeleteVehicleModel обробляє видалення моделі транспорту
+func DeleteVehicleModel(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID моделі")
+			return
+		}
+
+		if err := database.DeleteVehicleModel(pool, id); err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Модель успішно видалено"})
+	}
+}
+
+// GetAdminStats повертає загальну статистику для дашборду
+func GetAdminStats(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		stats, err := database.GetAdminStats(pool)
+		if err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(stats)
+	}
+}

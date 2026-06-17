@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -35,6 +37,68 @@ func UpdateVehicleStatus(pool *pgxpool.Pool, vehicleID int, newStatus string) er
 		return fmt.Errorf("самокат не знайдено")
 	}
 	return nil
+}
+
+// GetAllRidesAdmin повертає історію всіх поїздок для адмін-панелі
+func GetAllRidesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
+	query := `
+		SELECT 
+			r.id, r.user_id, u.email AS user_email, 
+			r.vehicle_id, v.uuid AS vehicle_uuid, 
+			r.status, r.start_time, r.end_time, r.total_price,
+			COALESCE(
+				(SELECT json_agg(
+					json_build_object(
+						'latitude', ST_Y(location::geometry),
+						'longitude', ST_X(location::geometry),
+						'timestamp', timestamp
+					) ORDER BY timestamp ASC
+				) FROM ride_telemetry rt WHERE rt.ride_id = r.id),
+				'[]'::json
+			) AS track
+		FROM rides r
+		JOIN users u ON r.user_id = u.id
+		JOIN vehicles v ON r.vehicle_id = v.id
+		ORDER BY r.start_time DESC
+	`
+	rows, err := pool.Query(context.Background(), query)
+	if err != nil {
+		return nil, fmt.Errorf("помилка запиту поїздок: %w", err)
+	}
+	defer rows.Close()
+
+	rides := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id, userID, vehicleID int
+		var userEmail, vehicleUUID, status string
+		var startTime time.Time
+		var endTime *time.Time
+		var totalPrice float64
+		var trackJSON []byte
+
+		if err := rows.Scan(&id, &userID, &userEmail, &vehicleID, &vehicleUUID, &status, &startTime, &endTime, &totalPrice, &trackJSON); err != nil {
+			return nil, err
+		}
+
+		var track []map[string]interface{}
+		if err := json.Unmarshal(trackJSON, &track); err != nil {
+			return nil, fmt.Errorf("помилка парсингу треку: %w", err)
+		}
+
+		rides = append(rides, map[string]interface{}{
+			"id":           id,
+			"user_id":      userID,
+			"user_email":   userEmail,
+			"vehicle_id":   vehicleID,
+			"vehicle_uuid": vehicleUUID,
+			"status":       status,
+			"start_time":   startTime,
+			"end_time":     endTime,
+			"total_price":  totalPrice,
+			"track":        track,
+		})
+	}
+	return rides, nil
 }
 
 // GetAllVehiclesAdmin повертає список абсолютно усіх самокатів для панелі адміністратора
@@ -98,7 +162,7 @@ func GetAllVehiclesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 
 // GetAllModelsAdmin повертає всі моделі транспорту з бази (для випадаючого списку в адмінці)
 func GetAllModelsAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
-	query := `SELECT id, name, type FROM vehicle_models WHERE deleted_at IS NULL ORDER BY id ASC`
+	query := `SELECT id, name, type, battery_capacity_wh, max_speed FROM vehicle_models WHERE deleted_at IS NULL ORDER BY type, id ASC`
 	rows, err := pool.Query(context.Background(), query)
 	if err != nil {
 		return nil, fmt.Errorf("помилка запиту моделей: %w", err)
@@ -107,15 +171,17 @@ func GetAllModelsAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
 
 	models := make([]map[string]interface{}, 0)
 	for rows.Next() {
-		var id int
+		var id, battery, speed int
 		var name, vType string
-		if err := rows.Scan(&id, &name, &vType); err != nil {
+		if err := rows.Scan(&id, &name, &vType, &battery, &speed); err != nil {
 			return nil, err
 		}
 		models = append(models, map[string]interface{}{
-			"id":   id,
-			"name": name,
-			"type": vType,
+			"id":                  id,
+			"name":                name,
+			"type":                vType,
+			"battery_capacity_wh": battery,
+			"max_speed":           speed,
 		})
 	}
 	return models, nil
@@ -174,6 +240,29 @@ func DeleteVehicle(pool *pgxpool.Pool, id int) error {
 	return nil
 }
 
+// AddVehicleModel додає нову модель транспорту
+func AddVehicleModel(pool *pgxpool.Pool, name, vType string, batteryCapacity, maxSpeed int) (int, error) {
+	query := `INSERT INTO vehicle_models (name, type, battery_capacity_wh, max_speed) VALUES ($1, $2, $3, $4) RETURNING id`
+	var id int
+	if err := pool.QueryRow(context.Background(), query, name, vType, batteryCapacity, maxSpeed).Scan(&id); err != nil {
+		return 0, fmt.Errorf("помилка створення моделі: %w", err)
+	}
+	return id, nil
+}
+
+// DeleteVehicleModel виконує "м'яке" видалення моделі (щоб не зламати існуючі самокати)
+func DeleteVehicleModel(pool *pgxpool.Pool, id int) error {
+	query := `UPDATE vehicle_models SET deleted_at = NOW() WHERE id = $1`
+	cmdTag, err := pool.Exec(context.Background(), query, id)
+	if err != nil {
+		return fmt.Errorf("помилка видалення моделі: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("модель не знайдено")
+	}
+	return nil
+}
+
 // DeleteParkingZone видаляє зону паркування з бази
 func DeleteParkingZone(pool *pgxpool.Pool, id int) error {
 	query := `DELETE FROM parking_zones WHERE id = $1`
@@ -221,4 +310,79 @@ func DeleteTariff(pool *pgxpool.Pool, id int) error {
 		return fmt.Errorf("тариф не знайдено")
 	}
 	return nil
+}
+
+// GetAllUsersAdmin повертає список усіх користувачів
+func GetAllUsersAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
+	query := `SELECT id, name, email, phone, role, balance, is_blocked FROM users WHERE deleted_at IS NULL ORDER BY id DESC`
+	rows, err := pool.Query(context.Background(), query)
+	if err != nil {
+		return nil, fmt.Errorf("помилка запиту користувачів: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id int
+		var name, email, phone, role string
+		var balance float64
+		var isBlocked bool
+
+		if err := rows.Scan(&id, &name, &email, &phone, &role, &balance, &isBlocked); err != nil {
+			return nil, err
+		}
+		users = append(users, map[string]interface{}{
+			"id":         id,
+			"name":       name,
+			"email":      email,
+			"phone":      phone,
+			"role":       role,
+			"balance":    balance,
+			"is_blocked": isBlocked,
+		})
+	}
+	return users, nil
+}
+
+// ToggleUserBlock блокує або розблоковує користувача (не дозволяє блокувати адмінів)
+func ToggleUserBlock(pool *pgxpool.Pool, userID int, isBlocked bool) error {
+	query := `UPDATE users SET is_blocked = $1 WHERE id = $2 AND role != 'admin' AND deleted_at IS NULL`
+	if _, err := pool.Exec(context.Background(), query, isBlocked, userID); err != nil {
+		return fmt.Errorf("помилка оновлення статусу користувача: %w", err)
+	}
+	return nil
+}
+
+// GetAdminStats повертає загальну статистику для дашборду
+func GetAdminStats(pool *pgxpool.Pool) (map[string]interface{}, error) {
+	ctx := context.Background()
+	var totalUsers, activeRides, totalVehicles int
+	var totalRevenue float64
+
+	// Загальна кількість клієнтів
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM users WHERE role = 'client' AND deleted_at IS NULL").Scan(&totalUsers); err != nil {
+		return nil, fmt.Errorf("помилка підрахунку користувачів: %w", err)
+	}
+
+	// Кількість активних поїздок
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM rides WHERE status = 'active'").Scan(&activeRides); err != nil {
+		return nil, fmt.Errorf("помилка підрахунку активних поїздок: %w", err)
+	}
+
+	// Загальний дохід (сума всіх успішних списань за поїздки)
+	if err := pool.QueryRow(ctx, "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE type = 'charge' AND status = 'succeeded'").Scan(&totalRevenue); err != nil {
+		return nil, fmt.Errorf("помилка підрахунку доходу: %w", err)
+	}
+
+	// Кількість транспорту в системі
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM vehicles WHERE deleted_at IS NULL").Scan(&totalVehicles); err != nil {
+		return nil, fmt.Errorf("помилка підрахунку транспорту: %w", err)
+	}
+
+	return map[string]interface{}{
+		"total_users":    totalUsers,
+		"active_rides":   activeRides,
+		"total_revenue":  totalRevenue,
+		"total_vehicles": totalVehicles,
+	}, nil
 }

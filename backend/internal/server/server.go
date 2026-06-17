@@ -2,7 +2,9 @@ package server
 
 import (
 	"net/http"
+	"time"
 
+	"eco-rental/internal/database"
 	"eco-rental/internal/handlers"
 	"eco-rental/internal/middleware"
 
@@ -12,6 +14,14 @@ import (
 
 func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 	r := chi.NewRouter()
+
+	// Запускаємо фоновий процес (Worker) для автоматичного завершення поїздок при нестачі балансу
+	go func() {
+		for {
+			time.Sleep(1 * time.Minute)
+			database.AutoEndRides(dbPool)
+		}
+	}()
 
 	// 1. Публічні маршрути (доступні всім)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +77,12 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		r.Patch("/api/admin/tariffs/{id}", handlers.UpdateTariff(dbPool))
 		r.Post("/api/admin/tariffs", handlers.AddTariff(dbPool))
 		r.Delete("/api/admin/tariffs/{id}", handlers.DeleteTariff(dbPool))
+		r.Get("/api/admin/users", handlers.GetAllUsersAdmin(dbPool))
+		r.Patch("/api/admin/users/{id}/block", handlers.ToggleUserBlock(dbPool))
+		r.Get("/api/admin/rides", handlers.GetAllRidesAdmin(dbPool))
+		r.Post("/api/admin/models", handlers.AddVehicleModel(dbPool))
+		r.Delete("/api/admin/models/{id}", handlers.DeleteVehicleModel(dbPool))
+		r.Get("/api/admin/stats", handlers.GetAdminStats(dbPool))
 	})
 
 	return r
