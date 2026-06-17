@@ -97,18 +97,20 @@ func EndRide(pool *pgxpool.Pool, userID int, photoURL string) (*models.Ride, err
 
 	// 1. Шукаємо активну поїздку юзера та дістаємо тариф через JOIN
 	queryInfo := `
-		SELECT r.id, r.vehicle_id, r.start_time, t.unlock_price, t.minute_price
+		SELECT r.id, r.vehicle_id, r.start_time, t.unlock_price, t.minute_price, u.active_discount_percent
 		FROM rides r
 		JOIN vehicles v ON r.vehicle_id = v.id
 		JOIN tariffs t ON v.tariff_id = t.id
+		JOIN users u ON r.user_id = u.id
 		WHERE r.user_id = $1 AND r.status = 'active'
-		FOR UPDATE OF r
+		FOR UPDATE OF r, u
 	`
 	var rideID, vehicleID int
 	var startTime time.Time
 	var unlockPrice, minutePrice float64
+	var activeDiscount int
 
-	err = tx.QueryRow(ctx, queryInfo, userID).Scan(&rideID, &vehicleID, &startTime, &unlockPrice, &minutePrice)
+	err = tx.QueryRow(ctx, queryInfo, userID).Scan(&rideID, &vehicleID, &startTime, &unlockPrice, &minutePrice, &activeDiscount)
 	if err != nil {
 		return nil, fmt.Errorf("у вас немає активних поїздок")
 	}
@@ -141,6 +143,16 @@ func EndRide(pool *pgxpool.Pool, userID int, photoURL string) (*models.Ride, err
 		minutes = 1 // Навіть якщо проїхав 10 секунд, платиш за 1 хвилину
 	}
 	totalPrice := unlockPrice + (minutes * minutePrice)
+
+	// =================================================================
+	// ЗАСТОСУВАННЯ ЗНИЖКИ ВІД ПРОМОКОДУ
+	// =================================================================
+	if activeDiscount > 0 {
+		discountAmount := totalPrice * (float64(activeDiscount) / 100.0)
+		totalPrice = math.Max(0, totalPrice-discountAmount) // Не допускаємо від'ємної ціни
+		// Анулюємо використану знижку
+		tx.Exec(ctx, "UPDATE users SET active_discount_percent = 0 WHERE id = $1", userID)
+	}
 
 	// 3. Списуємо гроші з балансу користувача
 	_, err = tx.Exec(ctx, "UPDATE users SET balance = balance - $1 WHERE id = $2", totalPrice, userID)
