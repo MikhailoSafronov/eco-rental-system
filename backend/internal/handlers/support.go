@@ -116,6 +116,36 @@ func UpdateTicketStatus(pool *pgxpool.Pool) http.HandlerFunc {
 func GetTicketDetails(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotImplemented) }
 }
+
+// ReplyToTicket обробляє додавання нового повідомлення в існуючий тікет
 func ReplyToTicket(pool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotImplemented) }
+	return func(w http.ResponseWriter, r *http.Request) {
+		userIDRaw := r.Context().Value(middleware.UserIDKey)
+		userID, ok := userIDRaw.(int)
+		if !ok {
+			RespondWithError(w, http.StatusUnauthorized, "Помилка авторизації")
+			return
+		}
+
+		ticketID, err := strconv.Atoi(chi.URLParam(r, "id"))
+		if err != nil {
+			RespondWithError(w, http.StatusBadRequest, "Некоректний ID тікета")
+			return
+		}
+
+		var req struct {
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
+			RespondWithError(w, http.StatusBadRequest, "Повідомлення не може бути порожнім")
+			return
+		}
+
+		if err := database.AddMessageToTicket(pool, ticketID, userID, req.Message); err != nil {
+			RespondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}
 }

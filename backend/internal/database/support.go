@@ -148,4 +148,13 @@ func UpdateTicketStatus(pool *pgxpool.Pool, ticketID int, status string) error {
 	return nil
 }
 
+// AddMessageToTicket додає нове повідомлення до існуючого тікета
+func AddMessageToTicket(pool *pgxpool.Pool, ticketID, senderID int, message string) error {
+	query := `INSERT INTO support_messages (ticket_id, sender_id, message) VALUES ($1, $2, $3)`
+	if _, err := pool.Exec(context.Background(), query, ticketID, senderID, message); err != nil {
+		return fmt.Errorf("помилка додавання повідомлення: %w", err)
+	}
+	return nil
+}
+
 // Заглушки для розширення (деталі повідомлень тікета) можна додати пізніше, якщо потрібно розгорнути повноцінний чат.

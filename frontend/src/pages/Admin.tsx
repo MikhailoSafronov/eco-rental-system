@@ -93,6 +93,7 @@ export default function Admin() {
   const [selectedRide, setSelectedRide] = useState<AdminRide | null>(null);
 
   const [selectedSupportTicket, setSelectedSupportTicket] = useState<any | null>(null);
+  const [replyMessage, setReplyMessage] = useState('');
 
   // Отримуємо всі звернення в підтримку
   const { data: ticketsData } = useQuery<any[]>({
@@ -383,6 +384,21 @@ export default function Admin() {
     },
     onError: (error: Error) => {
       alert(`Помилка оновлення статусу звернення`);
+    }
+  });
+
+  // Мутація для відповіді в тікет
+  const replyTicketMutation = useMutation({
+    mutationFn: async (data: { id: number; message: string }) => {
+      const res = await api.post(`/admin/support/tickets/${data.id}/reply`, { message: data.message });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tickets'] });
+      setReplyMessage('');
+    },
+    onError: () => {
+      alert('Помилка відправки повідомлення');
     }
   });
 
@@ -1138,22 +1154,26 @@ export default function Admin() {
 
       {/* Модальне вікно для перегляду діалогу (тікета) підтримки */}
       {selectedSupportTicket && (
+        (() => {
+          // Завжди беремо свіжі дані з кешу, щоб повідомлення з'являлися миттєво
+          const ticket = ticketsData?.find(t => t.id === selectedSupportTicket.id) || selectedSupportTicket;
+          return (
         <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-4">
               <div>
-                <h2 className="text-2xl font-extrabold text-gray-800">Звернення #{selectedSupportTicket.id}</h2>
-                <p className="text-sm text-gray-500 mt-1">Клієнт: <span className="font-bold text-gray-800">{selectedSupportTicket.user_email}</span> (ID: {selectedSupportTicket.user_id})</p>
+                <h2 className="text-2xl font-extrabold text-gray-800">Звернення #{ticket.id}</h2>
+                <p className="text-sm text-gray-500 mt-1">Клієнт: <span className="font-bold text-gray-800">{ticket.user_email}</span> (ID: {ticket.user_id})</p>
               </div>
               <button onClick={() => setSelectedSupportTicket(null)} className="text-gray-400 hover:text-gray-800 text-2xl font-bold transition bg-gray-100 hover:bg-gray-200 rounded-full w-10 h-10 flex items-center justify-center">✕</button>
             </div>
 
             <div className="flex flex-col gap-4 overflow-hidden flex-1">
-              <h3 className="font-bold text-gray-800 text-lg">Тема: {selectedSupportTicket.subject}</h3>
+              <h3 className="font-bold text-gray-800 text-lg">Тема: {ticket.subject}</h3>
               
               <div className="flex-1 overflow-y-auto bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-3 shadow-inner">
-                {selectedSupportTicket.messages?.map((msg: any) => {
-                  const isClient = msg.sender_id === selectedSupportTicket.user_id;
+                {ticket.messages?.map((msg: any) => {
+                  const isClient = msg.sender_id === ticket.user_id;
                   return (
                     <div key={msg.id} className={`p-4 rounded-xl text-sm max-w-[85%] shadow-sm ${isClient ? 'bg-white border border-gray-200 text-gray-800 self-start rounded-tl-none' : 'bg-blue-600 text-white self-end rounded-tr-none'}`}>
                       {isClient && <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Клієнт</span>}
@@ -1165,9 +1185,30 @@ export default function Admin() {
                     </div>
                   );
                 })}
-                {(!selectedSupportTicket.messages || selectedSupportTicket.messages.length === 0) && (
+                {(!ticket.messages || ticket.messages.length === 0) && (
                   <p className="text-center text-gray-400 text-sm mt-4 font-medium">Немає повідомлень</p>
                 )}
+              </div>
+
+              {/* Поле для відповіді адміністратора */}
+              <div className="mt-2 flex gap-3">
+                <input 
+                  type="text" 
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && replyMessage.trim()) replyTicketMutation.mutate({ id: ticket.id, message: replyMessage });
+                  }}
+                  placeholder="Написати відповідь..." 
+                  className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition shadow-sm"
+                />
+                <button 
+                  onClick={() => replyTicketMutation.mutate({ id: ticket.id, message: replyMessage })}
+                  disabled={replyTicketMutation.isPending || !replyMessage.trim()}
+                  className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Відправити
+                </button>
               </div>
             </div>
 
@@ -1175,13 +1216,13 @@ export default function Admin() {
                <div className="flex items-center gap-3">
                  <span className="text-sm font-bold text-gray-700">Статус:</span>
                  <select 
-                    value={selectedSupportTicket.status}
+                    value={ticket.status}
                     onChange={(e) => {
-                      updateTicketStatusMutation.mutate({ id: selectedSupportTicket.id, status: e.target.value });
-                      setSelectedSupportTicket({ ...selectedSupportTicket, status: e.target.value });
+                      updateTicketStatusMutation.mutate({ id: ticket.id, status: e.target.value });
+                      setSelectedSupportTicket({ ...ticket, status: e.target.value });
                     }}
                     disabled={updateTicketStatusMutation.isPending}
-                    className={`cursor-pointer rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold shadow-sm outline-none transition focus:ring-2 focus:ring-blue-500 ${selectedSupportTicket.status === 'open' ? 'text-green-700 bg-green-50 border-green-200' : selectedSupportTicket.status === 'closed' ? 'text-gray-600 bg-gray-100' : 'text-blue-700 bg-blue-50 border-blue-200'}`}
+                    className={`cursor-pointer rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold shadow-sm outline-none transition focus:ring-2 focus:ring-blue-500 ${ticket.status === 'open' ? 'text-green-700 bg-green-50 border-green-200' : ticket.status === 'closed' ? 'text-gray-600 bg-gray-100' : 'text-blue-700 bg-blue-50 border-blue-200'}`}
                   >
                     <option value="open">🟢 Відкрито</option>
                     <option value="in_progress">🔵 В процесі</option>
@@ -1194,6 +1235,8 @@ export default function Admin() {
             </div>
           </div>
         </div>
+        );
+        })()
       )}
     </div>
   );

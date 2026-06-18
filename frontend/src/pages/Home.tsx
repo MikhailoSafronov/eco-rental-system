@@ -105,6 +105,7 @@ export default function Home() {
   const [ticketSubject, setTicketSubject] = useState('')
   const [ticketMessage, setTicketMessage] = useState('')
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null)
+  const [replyMessage, setReplyMessage] = useState('')
 
   // Автоматично приховуємо цифри координат через 2.5 секунди
   useEffect(() => {
@@ -181,6 +182,18 @@ export default function Home() {
       setTicketSubject('')
       setTicketMessage('')
       alert('Звернення успішно створено! Наша команда незабаром його обробить. 💬')
+    }
+  })
+
+  // Мутація для відповіді в існуюче звернення
+  const replyTicketMutation = useMutation({
+    mutationFn: async (data: { id: number; message: string }) => {
+      const res = await api.post(`/support/tickets/${data.id}/reply`, { message: data.message })
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supportTickets'] })
+      setReplyMessage('')
     }
   })
 
@@ -638,6 +651,33 @@ export default function Home() {
                           </div>
                         ))}
                       </div>
+                      
+                      {/* Форма відповіді */}
+                      {ticket.status !== 'closed' ? (
+                        <div className="mt-1 flex gap-2 border-t border-gray-100 pt-3">
+                          <input 
+                            type="text" 
+                            value={replyMessage}
+                            onChange={(e) => setReplyMessage(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && replyMessage.trim()) {
+                                replyTicketMutation.mutate({ id: ticket.id, message: replyMessage });
+                              }
+                            }}
+                            placeholder="Написати відповідь..." 
+                            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                          />
+                          <button 
+                            onClick={() => replyTicketMutation.mutate({ id: ticket.id, message: replyMessage })}
+                            disabled={replyTicketMutation.isPending || !replyMessage.trim()}
+                            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Відправити
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-center text-gray-400 mt-2 font-medium">Звернення закрито. Створіть нове за потреби.</p>
+                      )}
                     </div>
                   );
                 })()}
