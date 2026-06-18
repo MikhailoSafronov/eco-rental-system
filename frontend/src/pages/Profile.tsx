@@ -36,6 +36,9 @@ export default function Profile() {
   // Стан для обраної поїздки (для модального вікна деталей)
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
 
+  // Стан для інпуту промокоду
+  const [promoCode, setPromoCode] = useState('');
+
   // Отримуємо дані користувача (профіль + баланс)
   const { data: user, isLoading: isUserLoading } = useQuery({
     queryKey: ['profile'],
@@ -83,6 +86,24 @@ export default function Profile() {
     }
   });
 
+  // Мутація для активації промокоду
+  const applyPromoMutation = useMutation({
+    mutationFn: async (code: string) => {
+      const res = await api.post('/users/promocode', { code });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      alert(`🎉 ${data.message}`);
+      queryClient.invalidateQueries({ queryKey: ['profile'] }); // Миттєво оновить баланс
+      queryClient.invalidateQueries({ queryKey: ['payments', 'history'] }); // Додасть транзакцію в список
+      setPromoCode(''); // Очищаємо інпут
+    },
+    onError: (error) => {
+      const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Невідома помилка';
+      alert(`❌ Помилка:\n${message}`);
+    }
+  });
+
   if (isUserLoading) return <div className="p-8 text-center font-medium">Завантаження профілю...</div>;
 
   return (
@@ -125,6 +146,31 @@ export default function Profile() {
             className="rounded bg-green-500 px-6 py-2 text-white font-medium shadow-sm hover:bg-green-600 transition disabled:opacity-50"
           >
             {topUpMutation.isPending ? 'Обробка...' : 'Поповнити'}
+          </button>
+        </div>
+      </div>
+
+      {/* Блок активації промокоду */}
+      <div className="mb-8 flex flex-col sm:flex-row items-center justify-between rounded-xl border border-green-200 bg-green-50 p-6 shadow-sm gap-4">
+        <div>
+          <h3 className="text-lg font-bold text-green-800">🎁 Маєте промокод?</h3>
+          <p className="text-sm text-green-700">Введіть його тут, щоб отримати бонус на поїздки.</p>
+        </div>
+        <div className="flex w-full flex-col sm:w-auto sm:flex-row gap-2">
+          <input
+            type="text"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value.trim().toUpperCase())}
+            placeholder="Введіть код..."
+            className="w-full sm:w-48 rounded-lg border border-gray-300 bg-white px-4 py-2 font-mono uppercase focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+            disabled={applyPromoMutation.isPending}
+          />
+          <button
+            onClick={() => applyPromoMutation.mutate(promoCode)}
+            disabled={applyPromoMutation.isPending || !promoCode.trim()}
+            className="whitespace-nowrap rounded-lg bg-green-600 px-6 py-2 font-medium text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {applyPromoMutation.isPending ? 'Обробка...' : 'Застосувати'}
           </button>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { isAxiosError } from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
 import { Navigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Polyline } from 'react-leaflet';
+import { PromoCodesAdmin } from '../components/PromoCodesAdmin';
 
 // Описуємо структуру транспорту для адмінки
 interface AdminVehicle {
@@ -714,6 +715,11 @@ export default function Admin() {
           </tbody>
         </table>
       </div>
+
+      <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Управління промокодами 🎁</h2>
+      </div>
+      <PromoCodesAdmin />
 
       {/* Модальне вікно для додавання транспорту */}
       {isAddModalOpen && (
