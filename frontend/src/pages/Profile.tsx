@@ -160,7 +160,7 @@ export default function Profile() {
           <input
             type="text"
             value={promoCode}
-            onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+            onChange={(e) => setPromoCode(e.target.value.trim().toUpperCase())}
             placeholder="Введіть код..."
             className="w-full sm:w-48 rounded-lg border border-gray-300 bg-white px-4 py-2 font-mono uppercase focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
             disabled={applyPromoMutation.isPending}

@@ -386,3 +386,66 @@ func GetAdminStats(pool *pgxpool.Pool) (map[string]interface{}, error) {
 		"total_vehicles": totalVehicles,
 	}, nil
 }
+
+// GetAllPromoCodesAdmin повертає всі промокоди для адмін-панелі
+func GetAllPromoCodesAdmin(pool *pgxpool.Pool) ([]map[string]interface{}, error) {
+	query := `
+		SELECT p.id, p.code, p.type, p.reward_amount, p.discount_percent, p.max_uses, p.current_uses, p.user_id, u.email as user_email
+		FROM promo_codes p
+		LEFT JOIN users u ON p.user_id = u.id
+		ORDER BY p.id DESC
+	`
+	rows, err := pool.Query(context.Background(), query)
+	if err != nil {
+		return nil, fmt.Errorf("помилка запиту промокодів: %w", err)
+	}
+	defer rows.Close()
+
+	promos := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id, discount, maxUses, currentUses int
+		var code, pType string
+		var reward float64
+		var userID *int
+		var userEmail *string
+
+		if err := rows.Scan(&id, &code, &pType, &reward, &discount, &maxUses, &currentUses, &userID, &userEmail); err != nil {
+			return nil, err
+		}
+		promos = append(promos, map[string]interface{}{
+			"id":               id,
+			"code":             code,
+			"type":             pType,
+			"reward_amount":    reward,
+			"discount_percent": discount,
+			"max_uses":         maxUses,
+			"current_uses":     currentUses,
+			"user_id":          userID,
+			"user_email":       userEmail,
+		})
+	}
+	return promos, nil
+}
+
+// AddPromoCodeAdmin додає новий промокод
+func AddPromoCodeAdmin(pool *pgxpool.Pool, code, pType string, rewardAmount float64, discountPercent, maxUses int, userID *int) (int, error) {
+	query := `INSERT INTO promo_codes (code, type, reward_amount, discount_percent, max_uses, user_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
+	var id int
+	err := pool.QueryRow(context.Background(), query, code, pType, rewardAmount, discountPercent, maxUses, userID).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("помилка створення промокоду: %w", err)
+	}
+	return id, nil
+}
+
+// DeletePromoCodeAdmin видаляє промокод
+func DeletePromoCodeAdmin(pool *pgxpool.Pool, id int) error {
+	cmdTag, err := pool.Exec(context.Background(), "DELETE FROM promo_codes WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("помилка видалення промокоду: %w", err)
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("промокод не знайдено")
+	}
+	return nil
+}

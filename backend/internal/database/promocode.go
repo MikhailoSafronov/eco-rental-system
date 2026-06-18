@@ -95,7 +95,8 @@ func ApplyPromoCode(pool *pgxpool.Pool, userID int, code string) (float64, strin
 		}
 
 		// Робимо запис в історію транзакцій (тільки для грошових бонусів)
-		transactionID := fmt.Sprintf("PROMO-%s", code)
+		// Додаємо userID до ID транзакції, щоб вона була гарантовано унікальною в payments
+		transactionID := fmt.Sprintf("PROMO-%s-%d", code, userID)
 		_, err = tx.Exec(ctx, `
 			INSERT INTO payments (user_id, amount, type, status, external_transaction_id) 
 			VALUES ($1, $2, 'top_up', 'succeeded', $3)
