@@ -78,7 +78,7 @@ export default function Home() {
   const queryClient = useQueryClient()
   
   // Отримуємо профіль користувача для перевірки статусу блокування
-  const { data: user } = useQuery<{ is_blocked: boolean }>({
+  const { data: user } = useQuery<{ id: number; is_blocked: boolean }>({
     queryKey: ['profile'],
     queryFn: async () => {
       const res = await api.get('/users/me')
@@ -99,6 +99,12 @@ export default function Home() {
   const [maxMinutePrice, setMaxMinutePrice] = useState<number | ''>('')
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(true)
   const [isSimulating, setIsSimulating] = useState(false)
+
+  // Стан для техпідтримки
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false)
+  const [ticketSubject, setTicketSubject] = useState('')
+  const [ticketMessage, setTicketMessage] = useState('')
+  const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null)
 
   // Автоматично приховуємо цифри координат через 2.5 секунди
   useEffect(() => {
@@ -154,6 +160,29 @@ export default function Home() {
 
   // Шукаємо, чи є серед поїздок активна
   const activeRide = historyData?.find((r) => r.status === 'active') || null
+
+  // Запит для отримання звернень користувача
+  const { data: supportTickets } = useQuery({
+    queryKey: ['supportTickets'],
+    queryFn: async () => {
+      const res = await api.get('/support/tickets')
+      return res.data || []
+    }
+  })
+
+  // Мутація для створення звернення
+  const createTicketMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post('/support/tickets', { subject: ticketSubject, message: ticketMessage })
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supportTickets'] })
+      setTicketSubject('')
+      setTicketMessage('')
+      alert('Звернення успішно створено! Наша команда незабаром його обробить. 💬')
+    }
+  })
 
   // Логіка фільтрації та сортування транспорту (виконується ефективно через useMemo)
   const processedVehicles = useMemo(() => {
@@ -284,6 +313,15 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Кнопка техпідтримки */}
+      <button
+        onClick={() => setIsSupportModalOpen(true)}
+        className="absolute bottom-6 left-6 z-[1000] flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-2xl text-white shadow-xl transition hover:bg-blue-700 hover:scale-105"
+        title="Техпідтримка"
+      >
+        💬
+      </button>
 
       {/* Індикатори стану */}
       {isLoading && (
@@ -568,6 +606,94 @@ export default function Home() {
           >
             {endRideMutation.isPending || isUploading ? 'Обробка...' : 'Завершити поїздку 🛑'}
           </button>
+        </div>
+      )}
+
+      {/* Модальне вікно техпідтримки */}
+      {isSupportModalOpen && (
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h2 className="text-2xl font-extrabold text-gray-800">Підтримка 💬</h2>
+              <button onClick={() => { setIsSupportModalOpen(false); setSelectedTicketId(null); }} className="text-gray-500 hover:text-gray-800 text-2xl font-bold transition">✕</button>
+            </div>
+            
+            {selectedTicketId ? (
+              // Детальний перегляд вибраного звернення
+              <div className="flex flex-col gap-3">
+                <button onClick={() => setSelectedTicketId(null)} className="text-sm text-blue-600 font-bold hover:underline self-start mb-1">← Назад до списку</button>
+                {(() => {
+                  const ticket = supportTickets?.find((t: any) => t.id === selectedTicketId);
+                  if (!ticket) return <p className="text-sm text-gray-500">Звернення не знайдено</p>;
+                  return (
+                    <div className="flex flex-col gap-3">
+                      <h3 className="font-bold text-gray-800 text-lg border-b pb-2">{ticket.subject}</h3>
+                      <div className="flex flex-col gap-3 max-h-64 overflow-y-auto pr-2">
+                        {ticket.messages?.map((msg: any) => (
+                          <div key={msg.id} className={`p-3.5 rounded-xl text-sm max-w-[85%] shadow-sm ${msg.sender_id === user?.id ? 'bg-blue-600 text-white self-end rounded-br-none' : 'bg-gray-100 text-gray-800 self-start border border-gray-200 rounded-bl-none'}`}>
+                            <p className="whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                            <span className={`text-[10px] block mt-1.5 ${msg.sender_id === user?.id ? 'text-blue-200' : 'text-gray-400'}`}>
+                              {new Date(msg.created_at).toLocaleString('uk-UA')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              // Список тікетів та форма створення нового
+              <>
+                <div className="max-h-40 overflow-y-auto rounded-xl bg-gray-50 p-3 shadow-inner border border-gray-100">
+                  <h3 className="mb-2 text-sm font-bold text-gray-700">Мої звернення:</h3>
+                  {(!supportTickets || supportTickets.length === 0) ? (
+                    <p className="text-xs text-gray-500">У вас ще немає створених звернень.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-2">
+                      {supportTickets.map((t: any) => (
+                        <li key={t.id} onClick={() => setSelectedTicketId(t.id)} className="flex items-center justify-between rounded-lg bg-white p-2.5 shadow-sm border border-gray-200 cursor-pointer hover:border-blue-300 hover:shadow transition group">
+                          <span className="font-medium text-sm text-gray-800 truncate pr-2 group-hover:text-blue-700 transition">{t.subject}</span>
+                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap ${t.status === 'open' ? 'bg-green-100 text-green-700' : t.status === 'closed' ? 'bg-gray-200 text-gray-600' : 'bg-blue-100 text-blue-700'}`}>
+                            {t.status === 'open' ? 'Відкрито' : t.status === 'closed' ? 'Закрито' : 'В процесі'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-3 border-t border-gray-100 pt-3">
+                  <h3 className="text-sm font-bold text-gray-700">Створити нове звернення</h3>
+                  <div>
+                    <input 
+                      type="text" 
+                      placeholder="Коротка тема (напр: Зламане гальмо)"
+                      value={ticketSubject} 
+                      onChange={e => setTicketSubject(e.target.value)} 
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" 
+                    />
+                  </div>
+                  <div>
+                    <textarea 
+                      rows={3}
+                      placeholder="Опишіть проблему детальніше..."
+                      value={ticketMessage} 
+                      onChange={e => setTicketMessage(e.target.value)} 
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none transition" 
+                    />
+                  </div>
+                  <button 
+                    onClick={() => createTicketMutation.mutate()}
+                    disabled={createTicketMutation.isPending || !ticketSubject.trim() || !ticketMessage.trim()}
+                    className="w-full rounded-xl bg-blue-600 py-3 text-base font-bold text-white shadow-md transition hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {createTicketMutation.isPending ? 'Відправка...' : 'Надіслати'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

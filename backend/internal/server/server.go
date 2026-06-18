@@ -60,6 +60,12 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 
 		// Завантаження файлів
 		r.Post("/api/upload", handlers.UploadPhoto())
+
+		// Техпідтримка (Користувач)
+		r.Post("/api/support/tickets", handlers.CreateTicket(dbPool))
+		r.Get("/api/support/tickets", handlers.GetUserTickets(dbPool))
+		r.Get("/api/support/tickets/{id}", handlers.GetTicketDetails(dbPool))
+		r.Post("/api/support/tickets/{id}/reply", handlers.ReplyToTicket(dbPool))
 	})
 
 	// 3. Адміністративні маршрути
@@ -89,6 +95,11 @@ func RegisterRoutes(dbPool *pgxpool.Pool) http.Handler {
 		r.Get("/api/admin/promocodes", handlers.GetAllPromoCodesAdmin(dbPool))
 		r.Post("/api/admin/promocodes", handlers.AddPromoCodeAdmin(dbPool))
 		r.Delete("/api/admin/promocodes/{id}", handlers.DeletePromoCodeAdmin(dbPool))
+
+		// Техпідтримка (Адмін)
+		r.Get("/api/admin/support/tickets", handlers.GetAllTicketsAdmin(dbPool))
+		r.Patch("/api/admin/support/tickets/{id}/status", handlers.UpdateTicketStatus(dbPool))
+		r.Post("/api/admin/support/tickets/{id}/reply", handlers.ReplyToTicket(dbPool))
 	})
 
 	return r
