@@ -92,6 +92,18 @@ export default function Admin() {
   // Стан для перегляду деталей поїздки (маршруту)
   const [selectedRide, setSelectedRide] = useState<AdminRide | null>(null);
 
+  const [selectedSupportTicket, setSelectedSupportTicket] = useState<any | null>(null);
+  const [replyMessage, setReplyMessage] = useState('');
+
+  // Отримуємо всі звернення в підтримку
+  const { data: ticketsData } = useQuery<any[]>({
+    queryKey: ['admin', 'tickets'],
+    queryFn: async () => {
+      const res = await api.get('/admin/support/tickets');
+      return res.data || [];
+    }
+  });
+
   // Отримуємо ВСІ самокати (включно зі зламаними та орендованими)
   const { data: vehicles, isLoading, isError } = useQuery<AdminVehicle[]>({
     queryKey: ['admin', 'vehicles'],
@@ -358,6 +370,35 @@ export default function Admin() {
     onError: (error: Error) => {
       const message = isAxiosError(error) ? (error.response?.data as { error?: string })?.error : 'Помилка';
       alert(`Помилка видалення моделі:\n${message}`);
+    }
+  });
+
+  // Мутація для зміни статусу тікета
+  const updateTicketStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const res = await api.patch(`/admin/support/tickets/${id}/status`, { status });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tickets'] });
+    },
+    onError: (error: Error) => {
+      alert(`Помилка оновлення статусу звернення`);
+    }
+  });
+
+  // Мутація для відповіді в тікет
+  const replyTicketMutation = useMutation({
+    mutationFn: async (data: { id: number; message: string }) => {
+      const res = await api.post(`/admin/support/tickets/${data.id}/reply`, { message: data.message });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tickets'] });
+      setReplyMessage('');
+    },
+    onError: () => {
+      alert('Помилка відправки повідомлення');
     }
   });
 
@@ -721,6 +762,50 @@ export default function Admin() {
       </div>
       <PromoCodesAdmin />
 
+      <div className="mt-12 mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-extrabold text-gray-800">Звернення клієнтів (Техпідтримка) 💬</h2>
+      </div>
+      
+      <div className="overflow-hidden rounded-xl bg-white shadow-md mb-12">
+        <table className="w-full text-left text-sm text-gray-600">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-700 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-4">ID / Створено</th>
+              <th className="px-6 py-4">Користувач</th>
+              <th className="px-6 py-4">Тема</th>
+              <th className="px-6 py-4">Статус</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {ticketsData?.map((ticket) => (
+              <tr key={ticket.id} onClick={() => setSelectedSupportTicket(ticket)} className="hover:bg-blue-50 transition cursor-pointer group">
+                <td className="px-6 py-4">
+                  <div className="font-bold text-gray-800 group-hover:text-blue-700">#{ticket.id}</div>
+                  <div className="text-xs text-gray-500">{new Date(ticket.created_at).toLocaleString('uk-UA')}</div>
+                </td>
+                <td className="px-6 py-4 font-medium text-gray-800">{ticket.user_email} <span className="text-xs text-gray-400">(ID: {ticket.user_id})</span></td>
+                <td className="px-6 py-4 font-medium text-gray-800">{ticket.subject}</td>
+                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <select 
+                    value={ticket.status}
+                    onChange={(e) => updateTicketStatusMutation.mutate({ id: ticket.id, status: e.target.value })}
+                    disabled={updateTicketStatusMutation.isPending}
+                    className={`cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-bold shadow-sm outline-none transition focus:border-gray-800 ${ticket.status === 'open' ? 'text-green-600' : ticket.status === 'closed' ? 'text-gray-400' : 'text-blue-600'}`}
+                  >
+                    <option value="open">🟢 Відкрито</option>
+                    <option value="in_progress">🔵 В процесі</option>
+                    <option value="closed">⚪ Закрито</option>
+                  </select>
+                </td>
+              </tr>
+            ))}
+            {(!ticketsData || ticketsData.length === 0) && (
+              <tr><td colSpan={4} className="px-6 py-4 text-center">Наразі немає звернень 🎉</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
       {/* Модальне вікно для додавання транспорту */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1065,6 +1150,93 @@ export default function Admin() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Модальне вікно для перегляду діалогу (тікета) підтримки */}
+      {selectedSupportTicket && (
+        (() => {
+          // Завжди беремо свіжі дані з кешу, щоб повідомлення з'являлися миттєво
+          const ticket = ticketsData?.find(t => t.id === selectedSupportTicket.id) || selectedSupportTicket;
+          return (
+        <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-4">
+              <div>
+                <h2 className="text-2xl font-extrabold text-gray-800">Звернення #{ticket.id}</h2>
+                <p className="text-sm text-gray-500 mt-1">Клієнт: <span className="font-bold text-gray-800">{ticket.user_email}</span> (ID: {ticket.user_id})</p>
+              </div>
+              <button onClick={() => setSelectedSupportTicket(null)} className="text-gray-400 hover:text-gray-800 text-2xl font-bold transition bg-gray-100 hover:bg-gray-200 rounded-full w-10 h-10 flex items-center justify-center">✕</button>
+            </div>
+
+            <div className="flex flex-col gap-4 overflow-hidden flex-1">
+              <h3 className="font-bold text-gray-800 text-lg">Тема: {ticket.subject}</h3>
+              
+              <div className="flex-1 overflow-y-auto bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-3 shadow-inner">
+                {ticket.messages?.map((msg: any) => {
+                  const isClient = msg.sender_id === ticket.user_id;
+                  return (
+                    <div key={msg.id} className={`p-4 rounded-xl text-sm max-w-[85%] shadow-sm ${isClient ? 'bg-white border border-gray-200 text-gray-800 self-start rounded-tl-none' : 'bg-blue-600 text-white self-end rounded-tr-none'}`}>
+                      {isClient && <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Клієнт</span>}
+                      {!isClient && <span className="text-[10px] font-bold text-blue-200 uppercase tracking-wider block mb-1">Підтримка</span>}
+                      <p className="whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                      <span className={`text-[10px] block mt-2 ${isClient ? 'text-gray-400 text-right' : 'text-blue-200 text-right'}`}>
+                        {new Date(msg.created_at).toLocaleString('uk-UA')}
+                      </span>
+                    </div>
+                  );
+                })}
+                {(!ticket.messages || ticket.messages.length === 0) && (
+                  <p className="text-center text-gray-400 text-sm mt-4 font-medium">Немає повідомлень</p>
+                )}
+              </div>
+
+              {/* Поле для відповіді адміністратора */}
+              <div className="mt-2 flex gap-3">
+                <input 
+                  type="text" 
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && replyMessage.trim()) replyTicketMutation.mutate({ id: ticket.id, message: replyMessage });
+                  }}
+                  placeholder="Написати відповідь..." 
+                  className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition shadow-sm"
+                />
+                <button 
+                  onClick={() => replyTicketMutation.mutate({ id: ticket.id, message: replyMessage })}
+                  disabled={replyTicketMutation.isPending || !replyMessage.trim()}
+                  className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Відправити
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center shrink-0 border-t border-gray-100 pt-5 mt-4">
+               <div className="flex items-center gap-3">
+                 <span className="text-sm font-bold text-gray-700">Статус:</span>
+                 <select 
+                    value={ticket.status}
+                    onChange={(e) => {
+                      updateTicketStatusMutation.mutate({ id: ticket.id, status: e.target.value });
+                      setSelectedSupportTicket({ ...ticket, status: e.target.value });
+                    }}
+                    disabled={updateTicketStatusMutation.isPending}
+                    className={`cursor-pointer rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold shadow-sm outline-none transition focus:ring-2 focus:ring-blue-500 ${ticket.status === 'open' ? 'text-green-700 bg-green-50 border-green-200' : ticket.status === 'closed' ? 'text-gray-600 bg-gray-100' : 'text-blue-700 bg-blue-50 border-blue-200'}`}
+                  >
+                    <option value="open">🟢 Відкрито</option>
+                    <option value="in_progress">🔵 В процесі</option>
+                    <option value="closed">⚪ Закрито</option>
+                  </select>
+               </div>
+              <button onClick={() => setSelectedSupportTicket(null)} className="rounded-xl bg-gray-800 px-6 py-2.5 font-bold text-white transition hover:bg-gray-700 shadow-md">
+                Закрити
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+        })()
       )}
     </div>
   );
